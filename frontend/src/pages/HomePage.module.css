@@ -1,0 +1,138 @@
+.wrap {
+  min-height: 100vh;
+  background: var(--bg-page);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.75rem;
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.name {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.tag {
+  font-size: 0.75rem;
+  opacity: 0.9;
+}
+
+.user {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+
+.signOut {
+  background: none;
+  border: none;
+  color: #fff;
+  opacity: 0.9;
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  font-family: inherit;
+}
+
+.main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.title {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+  color: var(--color-primary);
+}
+
+.lead {
+  margin: 0 0 2rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.section {
+  margin-bottom: 2rem;
+}
+
+.h2 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.25rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.tile:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 16px rgba(27, 79, 114, 0.1);
+}
+
+.tile strong {
+  color: var(--color-primary);
+  font-size: 1rem;
+}
+
+.tile span {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.meta {
+  text-transform: capitalize;
+}
+
+.empty {
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.registerBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
