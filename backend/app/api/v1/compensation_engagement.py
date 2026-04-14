@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_company_membership_path, require_company_roles_path
+from app.config import settings
 from app.database import get_db
 from app.models.base import uuid_str
 from app.models.compensation_engagement import (
@@ -18,6 +19,7 @@ from app.models.compensation_engagement import (
     SurveyResponse,
 )
 from app.models.membership import CompanyMembership
+from app.models.org import Department
 from app.models.user import User
 from app.schemas.compensation_engagement import (
     BenefitsEnrollmentCreate,
@@ -27,10 +29,15 @@ from app.schemas.compensation_engagement import (
     PayRunCreate,
     PayRunOut,
     PayRunUpdate,
+    PayrollEngineExpectedOut,
+    PayrollFieldValidation,
+    PayrollValidateCalculationIn,
+    PayrollValidateCalculationOut,
     PayslipCreate,
     PayslipOut,
     SalaryStructureCreate,
     SalaryStructureOut,
+    SalaryStructureUpdate,
     SurveyCreate,
     SurveyOut,
     SurveyResponseCreate,
@@ -38,17 +45,58 @@ from app.schemas.compensation_engagement import (
 )
 from app.services.audit import write_audit
 from app.services.employee_helpers import get_employee_by_id, get_employee_for_user
+from app.services.simcash_engine import (
+    breakdown_to_submitted_map,
+    compare_submitted,
+    compute_monthly_breakdown,
+    normalize_submitted_numbers,
+    parse_salary_components,
+)
 
 router = APIRouter(prefix="/companies/{company_id}", tags=["compensation-engagement"])
 
 _COMP = frozenset({"company_admin", "compensation_analytics"})
+# Payroll operations (structures, runs, payslips, SimCash engine) — include HR ops who run payroll but not full comp analytics.
+_PAYROLL_OPS = frozenset({"company_admin", "compensation_analytics", "hr_ops"})
+
+
+def _department_name_for_pay_run(db: Session, company_id: str, department_id: str | None) -> str | None:
+    if not department_id:
+        return None
+    d = db.execute(
+        select(Department).where(Department.id == department_id, Department.company_id == company_id)
+    ).scalar_one_or_none()
+    return d.name if d else None
+
+
+def _pay_run_to_out(db: Session, company_id: str, row: PayRun) -> PayRunOut:
+    return PayRunOut(
+        id=row.id,
+        company_id=row.company_id,
+        department_id=row.department_id,
+        department_name=_department_name_for_pay_run(db, company_id, row.department_id),
+        month=row.month,
+        year=row.year,
+        status=row.status,
+        processed_by=row.processed_by,
+        processed_at=row.processed_at,
+        created_at=row.created_at,
+    )
+
+
+def _simcash_debug_response(x_simcash_debug: str | None) -> bool:
+    if settings.simcash_debug:
+        return True
+    if settings.debug and (x_simcash_debug or "").strip() == "1":
+        return True
+    return False
 
 
 @router.post("/payroll/salary-structures", response_model=SalaryStructureOut, status_code=status.HTTP_201_CREATED)
 def create_salary_structure(
     company_id: str,
     body: SalaryStructureCreate,
-    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_COMP))],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> SalaryStructure:
     user, _ = ctx
@@ -87,17 +135,71 @@ def list_salary_structures(
     return list(db.execute(q.order_by(SalaryStructure.created_at.desc())).scalars().all())
 
 
+@router.patch("/payroll/salary-structures/{structure_id}", response_model=SalaryStructureOut)
+def update_salary_structure(
+    company_id: str,
+    structure_id: str,
+    body: SalaryStructureUpdate,
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
+    db: Annotated[Session, Depends(get_db)],
+) -> SalaryStructure:
+    user, _ = ctx
+    row = db.execute(
+        select(SalaryStructure).where(
+            SalaryStructure.id == structure_id,
+            SalaryStructure.company_id == company_id,
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Salary structure not found")
+    data = body.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(row, k, v)
+    write_audit(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        entity_type="salary_structure",
+        entity_id=structure_id,
+        action="update",
+        changes_json=data,
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 @router.post("/payroll/pay-runs", response_model=PayRunOut, status_code=status.HTTP_201_CREATED)
 def create_pay_run(
     company_id: str,
     body: PayRunCreate,
-    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_COMP))],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> PayRun:
     user, _ = ctx
+    if body.department_id:
+        d = db.execute(
+            select(Department).where(Department.id == body.department_id, Department.company_id == company_id)
+        ).scalar_one_or_none()
+        if d is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
+        dup = db.execute(
+            select(PayRun).where(
+                PayRun.company_id == company_id,
+                PayRun.year == body.year,
+                PayRun.month == body.month,
+                PayRun.department_id == body.department_id,
+            )
+        ).scalar_one_or_none()
+        if dup is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A pay run already exists for this month and department",
+            )
     row = PayRun(
         id=uuid_str(),
         company_id=company_id,
+        department_id=body.department_id,
         month=body.month,
         year=body.year,
         status=body.status,
@@ -106,7 +208,7 @@ def create_pay_run(
     write_audit(db, company_id=company_id, user_id=user.id, entity_type="pay_run", entity_id=row.id, action="create", changes_json={})
     db.commit()
     db.refresh(row)
-    return row
+    return _pay_run_to_out(db, company_id, row)
 
 
 @router.get("/payroll/pay-runs", response_model=list[PayRunOut])
@@ -114,9 +216,12 @@ def list_pay_runs(
     company_id: str,
     _: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
     db: Annotated[Session, Depends(get_db)],
-) -> list[PayRun]:
-    r = db.execute(select(PayRun).where(PayRun.company_id == company_id).order_by(PayRun.year.desc(), PayRun.month.desc()))
-    return list(r.scalars().all())
+) -> list[PayRunOut]:
+    r = db.execute(
+        select(PayRun).where(PayRun.company_id == company_id).order_by(PayRun.year.desc(), PayRun.month.desc())
+    )
+    rows = list(r.scalars().all())
+    return [_pay_run_to_out(db, company_id, row) for row in rows]
 
 
 @router.patch("/payroll/pay-runs/{pay_run_id}", response_model=PayRunOut)
@@ -124,7 +229,7 @@ def update_pay_run(
     company_id: str,
     pay_run_id: str,
     body: PayRunUpdate,
-    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_COMP))],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> PayRun:
     user, _ = ctx
@@ -141,28 +246,35 @@ def update_pay_run(
     write_audit(db, company_id=company_id, user_id=user.id, entity_type="pay_run", entity_id=pay_run_id, action="update", changes_json=data)
     db.commit()
     db.refresh(row)
-    return row
+    return _pay_run_to_out(db, company_id, row)
 
 
 @router.post("/payroll/payslips", response_model=PayslipOut, status_code=status.HTTP_201_CREATED)
 def create_payslip(
     company_id: str,
     body: PayslipCreate,
-    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_COMP))],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> Payslip:
     user, _ = ctx
     pr = db.execute(select(PayRun).where(PayRun.id == body.pay_run_id, PayRun.company_id == company_id)).scalar_one_or_none()
     if pr is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pay run not found")
-    if get_employee_by_id(db, company_id, body.employee_id) is None:
+    emp = get_employee_by_id(db, company_id, body.employee_id)
+    if emp is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    if pr.department_id is not None and emp.department_id != pr.department_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Employee must belong to the pay run department",
+        )
     row = Payslip(
         id=uuid_str(),
         pay_run_id=body.pay_run_id,
         company_id=company_id,
         employee_id=body.employee_id,
         gross=body.gross,
+        earnings_json=body.earnings_json,
         deductions_json=body.deductions_json,
         net=body.net,
         pdf_url=body.pdf_url,
@@ -172,6 +284,105 @@ def create_payslip(
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.get("/payroll/engine-expected", response_model=PayrollEngineExpectedOut)
+def get_payroll_engine_expected(
+    company_id: str,
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
+    db: Annotated[Session, Depends(get_db)],
+    employee_id: str = Query(..., min_length=1),
+    loan_recovery: float = Query(default=0.0, ge=0),
+    other_deductions: float = Query(default=0.0, ge=0),
+) -> PayrollEngineExpectedOut:
+    """Return engine-computed monthly SimCash values for UI watermark (training / verification)."""
+    _, _ = ctx
+    if get_employee_by_id(db, company_id, employee_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    st = db.execute(
+        select(SalaryStructure)
+        .where(
+            SalaryStructure.company_id == company_id,
+            SalaryStructure.employee_id == employee_id,
+        )
+        .order_by(SalaryStructure.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if st is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Salary structure not found for employee")
+    try:
+        ctc, bonus_pct = parse_salary_components(st.components_json)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    bd = compute_monthly_breakdown(
+        ctc,
+        bonus_pct,
+        loan_recovery_monthly=loan_recovery,
+        other_deductions_monthly=other_deductions,
+    )
+    expected = breakdown_to_submitted_map(bd)
+    employer_expected = {
+        "pf_employer": bd.pf_employer,
+        "esi_employer": bd.esi_employer,
+        "gratuity_employer": bd.gratuity_employer,
+    }
+    return PayrollEngineExpectedOut(expected=expected, employer_expected=employer_expected)
+
+
+@router.post("/payroll/validate-calculation", response_model=PayrollValidateCalculationOut)
+def validate_payroll_calculation(
+    company_id: str,
+    body: PayrollValidateCalculationIn,
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
+    db: Annotated[Session, Depends(get_db)],
+    x_simcash_debug: Annotated[str | None, Header()] = None,
+) -> PayrollValidateCalculationOut:
+    _, _ = ctx
+    if get_employee_by_id(db, company_id, body.employee_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    st = db.execute(
+        select(SalaryStructure)
+        .where(
+            SalaryStructure.company_id == company_id,
+            SalaryStructure.employee_id == body.employee_id,
+        )
+        .order_by(SalaryStructure.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if st is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Salary structure not found for employee")
+    try:
+        ctc, bonus_pct = parse_salary_components(st.components_json)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    norm = normalize_submitted_numbers(body.submitted)
+    loan = float(norm.get("loan_recovery") or 0)
+    other = float(norm.get("other_deductions") or 0)
+    bd = compute_monthly_breakdown(
+        ctc,
+        bonus_pct,
+        loan_recovery_monthly=loan,
+        other_deductions_monthly=other,
+    )
+    expected = breakdown_to_submitted_map(bd)
+    cmp = compare_submitted(expected, norm)
+    fields = {k: PayrollFieldValidation(ok=v) for k, v in cmp.items()}
+    all_match = all(cmp.values())
+    dbg = _simcash_debug_response(x_simcash_debug)
+    return PayrollValidateCalculationOut(
+        fields=fields,
+        all_match=all_match,
+        expected=expected if dbg else None,
+        employer_expected=(
+            {
+                "pf_employer": bd.pf_employer,
+                "esi_employer": bd.esi_employer,
+                "gratuity_employer": bd.gratuity_employer,
+            }
+            if dbg
+            else None
+        ),
+    )
 
 
 @router.get("/payroll/payslips", response_model=list[PayslipOut])

@@ -16,5 +16,8 @@ class Settings(BaseSettings):
     upload_dir: Path = Path("./uploads")
     max_upload_bytes: int = 2 * 1024 * 1024  # 2 MiB — company logos
 
+    # SimCash: when True, validate-calculation may return expected values (do not enable in prod)
+    simcash_debug: bool = False
+
 
 settings = Settings()

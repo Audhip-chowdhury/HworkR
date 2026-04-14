@@ -249,3 +249,85 @@ def test_tracking_recent_activity_and_sla_log():
         )
         assert r.status_code == 200
         assert len(r.json()) >= 1
+
+
+def test_pay_run_department_scopes_payslip_employees():
+    from app.main import app
+
+    with TestClient(app) as client:
+        tok, cid = _register_and_company(client)
+
+        r = client.post(
+            f"/api/v1/companies/{cid}/departments",
+            json={"name": "Engineering"},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+        dept_a = r.json()["id"]
+
+        r = client.post(
+            f"/api/v1/companies/{cid}/departments",
+            json={"name": "Sales"},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+        dept_b = r.json()["id"]
+
+        suf = uuid.uuid4().hex[:8]
+        r = client.post(
+            f"/api/v1/companies/{cid}/employees",
+            json={
+                "employee_code": f"E-{suf}-a",
+                "department_id": dept_a,
+                "status": "active",
+            },
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+        emp_a = r.json()["id"]
+
+        r = client.post(
+            f"/api/v1/companies/{cid}/employees",
+            json={
+                "employee_code": f"E-{suf}-b",
+                "department_id": dept_b,
+                "status": "active",
+            },
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+        emp_b = r.json()["id"]
+
+        r = client.post(
+            f"/api/v1/companies/{cid}/payroll/pay-runs",
+            json={"month": 6, "year": 2026, "status": "draft", "department_id": dept_a},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+        pr_id = r.json()["id"]
+        assert r.json().get("department_id") == dept_a
+
+        r = client.post(
+            f"/api/v1/companies/{cid}/payroll/payslips",
+            json={
+                "pay_run_id": pr_id,
+                "employee_id": emp_a,
+                "gross": 50000.0,
+                "net": 40000.0,
+            },
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+
+        r = client.post(
+            f"/api/v1/companies/{cid}/payroll/payslips",
+            json={
+                "pay_run_id": pr_id,
+                "employee_id": emp_b,
+                "gross": 50000.0,
+                "net": 40000.0,
+            },
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 400
+        assert "department" in str(r.json().get("detail", "")).lower()

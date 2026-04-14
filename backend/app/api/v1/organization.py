@@ -683,13 +683,16 @@ def list_positions(
     company_id: str,
     _: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
     db: Annotated[Session, Depends(get_db)],
+    department_id: str | None = None,
 ) -> list[PositionOut]:
-    r = db.execute(
+    q = (
         select(Position)
         .options(joinedload(Position.department))
         .where(Position.company_id == company_id)
-        .order_by(Position.grade, Position.name)
     )
+    if department_id:
+        q = q.where(Position.department_id == department_id)
+    r = db.execute(q.order_by(Position.grade, Position.name))
     rows = r.unique().scalars().all()
     return [_position_to_out(p) for p in rows]
 

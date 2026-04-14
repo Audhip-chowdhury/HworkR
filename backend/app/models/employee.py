@@ -21,6 +21,7 @@ class Employee(Base):
     employee_code: Mapped[str] = mapped_column(String(64), nullable=False)
     department_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("departments.id"), nullable=True)
     job_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("job_catalog.id"), nullable=True)
+    position_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("positions.id", ondelete="SET NULL"), nullable=True)
     manager_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     location_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("locations.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)

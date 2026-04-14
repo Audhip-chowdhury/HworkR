@@ -11,6 +11,7 @@ from app.models.employee import Employee
 from app.models.lifecycle import EmployeeLifecycleEvent
 from app.models.membership import CompanyMembership
 from app.models.org import Department, JobCatalogEntry, Location
+from app.models.position import Position
 from app.models.user import User
 from app.schemas.employees import (
     EmployeeCreate,
@@ -61,6 +62,18 @@ def _validate_employee_refs(
         mgr = get_employee_by_id(db, company_id, data["manager_id"])
         if mgr is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Manager employee not found")
+    if data.get("position_id"):
+        pos = db.execute(
+            select(Position).where(Position.id == data["position_id"], Position.company_id == company_id)
+        ).scalar_one_or_none()
+        if pos is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Position not found")
+        dep_id = data.get("department_id")
+        if dep_id and pos.department_id and pos.department_id != dep_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Position does not belong to the selected department",
+            )
 
 
 @router.get("", response_model=list[EmployeeOut])
@@ -95,6 +108,7 @@ def create_employee(
         employee_code=body.employee_code.strip(),
         department_id=body.department_id,
         job_id=body.job_id,
+        position_id=body.position_id,
         manager_id=body.manager_id,
         location_id=body.location_id,
         status=body.status,

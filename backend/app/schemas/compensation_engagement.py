@@ -10,6 +10,11 @@ class SalaryStructureCreate(BaseModel):
     effective_from: str | None = None
 
 
+class SalaryStructureUpdate(BaseModel):
+    components_json: dict[str, Any] | None = None
+    effective_from: str | None = None
+
+
 class SalaryStructureOut(BaseModel):
     id: str
     company_id: str
@@ -25,6 +30,7 @@ class PayRunCreate(BaseModel):
     month: int = Field(ge=1, le=12)
     year: int = Field(ge=2000, le=2100)
     status: str = Field(default="draft", max_length=32)
+    department_id: str | None = None
 
 
 class PayRunUpdate(BaseModel):
@@ -34,6 +40,8 @@ class PayRunUpdate(BaseModel):
 class PayRunOut(BaseModel):
     id: str
     company_id: str
+    department_id: str | None = None
+    department_name: str | None = None
     month: int
     year: int
     status: str
@@ -41,13 +49,12 @@ class PayRunOut(BaseModel):
     processed_at: datetime | None
     created_at: datetime
 
-    model_config = {"from_attributes": True}
-
 
 class PayslipCreate(BaseModel):
     pay_run_id: str
     employee_id: str
     gross: float = Field(ge=0)
+    earnings_json: dict[str, Any] | None = None
     deductions_json: dict[str, Any] | None = None
     net: float = Field(ge=0)
     pdf_url: str | None = None
@@ -59,12 +66,37 @@ class PayslipOut(BaseModel):
     company_id: str
     employee_id: str
     gross: float
+    earnings_json: dict[str, Any] | None
     deductions_json: dict[str, Any] | None
     net: float
     pdf_url: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PayrollValidateCalculationIn(BaseModel):
+    employee_id: str
+    pay_run_id: str | None = None
+    submitted: dict[str, Any]
+
+
+class PayrollFieldValidation(BaseModel):
+    ok: bool
+
+
+class PayrollValidateCalculationOut(BaseModel):
+    fields: dict[str, PayrollFieldValidation]
+    all_match: bool
+    expected: dict[str, float] | None = None
+    employer_expected: dict[str, float] | None = None
+
+
+class PayrollEngineExpectedOut(BaseModel):
+    """Monthly SimCash figures from engine (preview / watermark); no user submission required."""
+
+    expected: dict[str, float]
+    employer_expected: dict[str, float]
 
 
 class BenefitsPlanCreate(BaseModel):
