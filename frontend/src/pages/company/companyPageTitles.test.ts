@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { companySectionTitle } from './companyPageTitles'
 
 describe('companySectionTitle', () => {
-  it('defaults to org', () => {
-    expect(companySectionTitle('').title).toContain('Organizational')
+  it('defaults to workspace dashboard when path is empty', () => {
+    expect(companySectionTitle('').title).toBe('Workspace dashboard')
   })
 
   it('detects workflow instance', () => {

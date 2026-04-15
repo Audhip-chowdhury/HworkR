@@ -35,6 +35,73 @@ def init_db() -> None:
 
     with SessionLocal() as session:
         _seed_platform_admin(session)
+        _migrate_employee_document_doc_types(session)
+        _backfill_employee_documents(session)
+
+
+def _migrate_employee_document_doc_types(session: Session) -> None:
+    """
+    Rename legacy id_proof → gov_id.
+
+    If both id_proof and gov_id rows exist (e.g. after adding gov_id backfill), a blind UPDATE
+    violates UNIQUE(employee_id, doc_type). We merge id_proof into gov_id when needed, then delete id_proof.
+    """
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.models.employee_document import EmployeeDocument  # noqa: PLC0415
+
+    id_proofs = session.execute(
+        select(EmployeeDocument).where(EmployeeDocument.doc_type == "id_proof")
+    ).scalars().all()
+
+    for old in id_proofs:
+        gov = session.execute(
+            select(EmployeeDocument).where(
+                EmployeeDocument.employee_id == old.employee_id,
+                EmployeeDocument.doc_type == "gov_id",
+            )
+        ).scalar_one_or_none()
+
+        if gov is None:
+            old.doc_type = "gov_id"
+            continue
+
+        if old.status == "submitted" and gov.status != "submitted":
+            gov.status = old.status
+            gov.file_url = old.file_url
+            gov.notes = old.notes
+            gov.meta_json = old.meta_json
+            gov.submitted_at = old.submitted_at
+        session.delete(old)
+
+    session.flush()
+
+    if database_url.startswith("sqlite"):
+        try:
+            session.execute(
+                text("""
+                    UPDATE inbox_tasks
+                    SET context_json = json_set(context_json, '$.doc_type', 'gov_id')
+                    WHERE type = 'document_required'
+                      AND json_extract(context_json, '$.doc_type') = 'id_proof'
+                """)
+            )
+        except Exception:
+            pass
+    session.commit()
+
+
+def _backfill_employee_documents(session: Session) -> None:
+    """Ensure photo, gov_id, offer_letter rows exist for every employee (Option B table)."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.models.employee import Employee  # noqa: PLC0415
+    from app.services.employee_document_sync import ensure_default_document_rows  # noqa: PLC0415
+
+    r = session.execute(select(Employee.id, Employee.company_id))
+    for eid, cid in r.all():
+        ensure_default_document_rows(session, cid, eid)
+    session.commit()
 
 
 def _sqlite_add_column_if_missing(table: str, column: str, ddl_type: str) -> None:

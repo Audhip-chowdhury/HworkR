@@ -153,6 +153,42 @@ export type Certificate = {
   verification_id: string
 }
 
+export type ProgressDimension = {
+  completeness: number | null
+  accuracy: number | null
+  timeliness: number | null
+  process_adherence: number | null
+}
+
+export type ProgressModule = {
+  module: string
+  label: string
+  action_count: number
+  avg_score: number | null
+}
+
+export type ProgressRecentAction = {
+  id: string
+  occurred_at: string
+  module: string
+  action_type: string
+  action_detail: string | null
+  score: number | null
+}
+
+export type CertificationProgressDashboard = {
+  overall_score: number | null
+  action_count: number
+  dimension_averages: ProgressDimension
+  module_breakdown: ProgressModule[]
+  required_actions_total: number
+  required_actions_completed: number
+  missing_required_actions: string[]
+  critical_failure_count: number
+  status: string
+  recent_actions: ProgressRecentAction[]
+}
+
 export type Requisition = {
   id: string
   company_id: string

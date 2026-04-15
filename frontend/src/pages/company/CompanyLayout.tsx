@@ -1,4 +1,5 @@
 import { Link, Outlet, useLocation, useParams } from 'react-router-dom'
+import { useMemo } from 'react'
 import { useAuth } from '../../auth/AuthContext'
 import { AppShell } from '../../components/layout/AppShell'
 import { LiveEventToasts } from '../../components/LiveEventToasts'
@@ -30,7 +31,37 @@ export function CompanyLayout() {
   }
 
   const displayCompany = entry.company.name
-  const navItems = companyNavItems(companyId, entry.membership)
+  const navItems = useMemo(() => {
+    const raw = companyNavItems(companyId, entry.membership)
+    const preserveQuery =
+      location.pathname.includes('/employees/') ||
+      location.pathname.includes('/leave/') ||
+      location.pathname.includes('/audits/')
+    const suffix = preserveQuery ? location.search : ''
+    return raw.map((item) => {
+      if (item.kind === 'group') {
+        const parentTo =
+          item.parentTo &&
+          (item.parentTo.includes('/employees/') ||
+            item.parentTo.includes('/leave/') ||
+            item.parentTo.includes('/audits/'))
+            ? `${item.parentTo.split('?')[0]}${suffix}`
+            : item.parentTo
+        return {
+          ...item,
+          parentTo,
+          children: item.children.map((c) => ({
+            ...c,
+            to:
+              c.to.includes('/employees/') || c.to.includes('/leave/') || c.to.includes('/audits/')
+                ? `${c.to.split('?')[0]}${suffix}`
+                : c.to,
+          })),
+        }
+      }
+      return item
+    })
+  }, [companyId, entry.membership, location.pathname, location.search])
 
   return (
     <RealtimeEventsProvider>

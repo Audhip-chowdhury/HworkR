@@ -11,7 +11,15 @@ describe('companyNavItems', () => {
       status: 'active',
       modules_access_json: null,
     })
-    expect(admin.some((n) => n.label === 'Webhooks')).toBe(true)
+    expect(admin.some((n) => n.kind === 'link' && n.label === 'Webhooks')).toBe(true)
+    const empGroup = admin.find((n) => n.kind === 'group' && n.label === 'Employees')
+    expect(empGroup?.kind).toBe('group')
+    if (empGroup?.kind === 'group') {
+      expect(empGroup.children.map((c) => c.label)).toEqual([
+        'Employee profile management',
+        'Lifecycle events',
+      ])
+    }
 
     const emp = companyNavItems('co1', {
       id: 'm2',
@@ -21,8 +29,8 @@ describe('companyNavItems', () => {
       status: 'active',
       modules_access_json: null,
     })
-    expect(emp.some((n) => n.label === 'Webhooks')).toBe(false)
-    expect(emp.some((n) => n.label === 'Organization')).toBe(true)
+    expect(emp.some((n) => n.kind === 'link' && n.label === 'Webhooks')).toBe(false)
+    expect(emp.some((n) => n.kind === 'link' && n.label === 'Organization')).toBe(true)
   })
 })
 

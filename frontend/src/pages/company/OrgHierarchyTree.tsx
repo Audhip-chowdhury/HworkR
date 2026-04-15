@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import styles from './OrgHierarchyTree.module.css'
 
 export type PositionNode = {
@@ -35,6 +36,18 @@ function childrenOf(parentId: string | null, all: PositionNode[]): PositionNode[
     .sort((a, b) => a.grade - b.grade || a.name.localeCompare(b.name))
 }
 
+function placementText(p: PositionNode): string {
+  if (p.bucket === 'c_suite') return 'C-suite'
+  if (p.bucket === 'temporary') return 'Temporary'
+  return p.department_name ?? 'Department'
+}
+
+function branchColorFor(p: PositionNode): string {
+  if (p.bucket === 'c_suite') return '#6d28d9'
+  if (p.bucket === 'temporary') return '#b45309'
+  return '#0f766e'
+}
+
 function Node({
   p,
   byId,
@@ -46,19 +59,16 @@ function Node({
 }) {
   const kids = childrenOf(p.id, all)
   const works = p.works_with_id ? byId.get(p.works_with_id) : undefined
-  const placement =
-    p.bucket === 'c_suite'
-      ? 'C-suite'
-      : p.bucket === 'temporary'
-        ? 'Temporary'
-        : p.department_name ?? 'Dept'
+  const nodeStyle = {
+    '--branch-color': branchColorFor(p),
+  } as CSSProperties
 
   return (
-    <li className={styles.treeLi}>
-      <div className={styles.nodeRow}>
+    <li className={styles.treeNode} style={nodeStyle}>
+      <div className={styles.nodeCard}>
         <span className={styles.nodeName}>{p.name}</span>
-        <span className={styles.nodeMeta}>grade {p.grade}</span>
-        <span className={styles.nodePlacement}>{placement}</span>
+        <span className={styles.nodeMeta}>Grade {p.grade}</span>
+        <span className={styles.nodePlacement}>{placementText(p)}</span>
         {works ? (
           <span className={styles.worksWith} title="Works with">
             ↔ {works.name}
@@ -66,7 +76,7 @@ function Node({
         ) : null}
       </div>
       {kids.length > 0 ? (
-        <ul className={styles.treeNested}>
+        <ul className={styles.childrenRow}>
           {kids.map((c) => (
             <Node key={c.id} p={c} byId={byId} all={all} />
           ))}
@@ -84,22 +94,20 @@ export function OrgHierarchyTree({ companyName, positions }: Props) {
     <div className={styles.wrap}>
       <h3 className={styles.title}>Reporting hierarchy</h3>
       <p className={styles.hint}>
-        Built from <strong>Reports to</strong>. Lower grade sorts above among siblings. C-suite
-        bucket roots list before department roles, then temporary. Dotted: works with.
+        Top-down tree built from <strong>Reports to</strong>. Branch colors: green (department),
+        purple (C-suite), amber (temporary).
       </p>
       {positions.length === 0 ? (
         <p className={styles.empty}>No positions yet.</p>
       ) : (
-        <ul className={styles.tree}>
-          <li className={styles.root}>
-            <span className={styles.rootLabel}>{companyName}</span>
-            <ul className={styles.treeNested}>
-              {roots.map((p) => (
-                <Node key={p.id} p={p} byId={byId} all={positions} />
-              ))}
-            </ul>
-          </li>
-        </ul>
+        <div className={styles.tree}>
+          <div className={styles.rootPill}>{companyName}</div>
+          <ul className={styles.childrenRow}>
+            {roots.map((p) => (
+              <Node key={p.id} p={p} byId={byId} all={positions} />
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )

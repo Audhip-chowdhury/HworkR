@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.api.v1 import (
     analytics,
+    audits,
     auth,
     certification,
     company_registration,
@@ -76,6 +77,7 @@ v1.include_router(company_registration.router)
 v1.include_router(platform.router)
 v1.include_router(organization.router)
 v1.include_router(employees.router)
+v1.include_router(audits.router)
 v1.include_router(hr_ops.router)
 v1.include_router(performance_learning.router)
 v1.include_router(compensation_engagement.router)

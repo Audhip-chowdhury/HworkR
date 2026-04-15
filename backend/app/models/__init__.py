@@ -13,6 +13,7 @@ from app.models.compensation_engagement import (
     SurveyResponse,
 )
 from app.models.employee import Employee
+from app.models.employee_document import EmployeeDocument
 from app.models.hr_ops import (
     AttendanceRecord,
     HolidayCalendar,
@@ -26,6 +27,7 @@ from app.models.membership import CompanyMembership
 from app.models.notification import Notification
 from app.models.org import Department, JobCatalogEntry, Location
 from app.models.org_role import DepartmentOrgRole, OrgRole
+from app.models.policy import PolicyAcknowledgment, PolicyDocument
 from app.models.performance_learning import (
     Assessment,
     Course,
@@ -62,6 +64,7 @@ __all__ = [
     "Offer",
     "Interview",
     "Employee",
+    "EmployeeDocument",
     "EmployeeLifecycleEvent",
     "LeavePolicy",
     "LeaveRequest",
@@ -85,6 +88,8 @@ __all__ = [
     "SurveyResponse",
     "ActivityLog",
     "ScoringRule",
+    "PolicyDocument",
+    "PolicyAcknowledgment",
     "CertTrack",
     "CertProgress",
     "Certificate",

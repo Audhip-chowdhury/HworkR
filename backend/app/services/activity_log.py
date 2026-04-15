@@ -10,6 +10,13 @@ from app.models.tracking import ActivityLog
 from app.services.scoring import composite_score
 
 
+def coerce_utc(dt: datetime) -> datetime:
+    """Make datetimes UTC-aware for arithmetic and storage. Naive values are treated as UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def log_activity(
     db: Session,
     *,
@@ -29,11 +36,11 @@ def log_activity(
     duration_seconds: int | None = None,
 ) -> ActivityLog:
     now = datetime.now(timezone.utc)
-    start = started_at or now
-    end = completed_at or now
+    start = coerce_utc(started_at) if started_at else now
+    end = coerce_utc(completed_at) if completed_at else now
     dur = duration_seconds
     if dur is None and started_at and completed_at:
-        dur = int((completed_at - started_at).total_seconds())
+        dur = int((coerce_utc(completed_at) - coerce_utc(started_at)).total_seconds())
 
     qf = quality_factors or {}
     quality_score = composite_score(qf) if qf else None

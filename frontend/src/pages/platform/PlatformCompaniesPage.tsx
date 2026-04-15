@@ -77,8 +77,8 @@ export function PlatformCompaniesPage() {
       title="Platform"
       subtitle="Approve company registrations and view tenants"
       navItems={[
-        { to: '/platform', label: 'Companies' },
-        { to: '/', label: 'Home' },
+        { kind: 'link', to: '/platform', label: 'Companies' },
+        { kind: 'link', to: '/', label: 'Home' },
       ]}
     >
       {error ? <p className={styles.error}>{error}</p> : null}

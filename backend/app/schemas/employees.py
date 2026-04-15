@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -84,3 +84,43 @@ class LifecycleEventOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class EmployeeDocumentOut(BaseModel):
+    id: str
+    doc_type: str
+    status: str
+    file_url: str | None
+    notes: str | None
+    meta_json: dict[str, Any] | None = None
+    submitted_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EmployeeDocumentPatch(BaseModel):
+    status: Literal["missing", "submitted"] | None = None
+    file_url: str | None = None
+    notes: str | None = None
+    meta_json: dict[str, Any] | None = None
+
+
+class EmployeeSummaryOut(BaseModel):
+    id: str
+    employee_code: str
+    display_name: str
+    display_email: str
+    status: str
+
+
+class EmployeeDetailOut(EmployeeOut):
+    display_name: str
+    display_email: str
+    department_name: str | None = None
+    job_title: str | None = None
+    job_grade: str | None = None
+    manager_name: str | None = None
+    location_name: str | None = None
+    documents: list[EmployeeDocumentOut] = Field(default_factory=list)

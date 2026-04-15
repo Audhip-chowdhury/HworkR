@@ -214,7 +214,7 @@ def test_webhook_subscription_crud():
 
 
 def test_tracking_recent_activity_and_sla_log():
-    from datetime import UTC, datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from app.main import app
 
@@ -229,7 +229,7 @@ def test_tracking_recent_activity_and_sla_log():
             },
             headers=_hdr(tok),
         )
-        started = datetime.now(UTC) - timedelta(seconds=120)
+        started = datetime.now(timezone.utc) - timedelta(seconds=120)
         r = client.post(
             f"/api/v1/companies/{cid}/tracking/activity-logs",
             json={

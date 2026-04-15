@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     upload_dir: Path = Path("./uploads")
     max_upload_bytes: int = 2 * 1024 * 1024  # 2 MiB — company logos
+    max_employee_document_bytes: int = 5 * 1024 * 1024  # 5 MiB — ID / photo / offer PDF
 
 
 settings = Settings()

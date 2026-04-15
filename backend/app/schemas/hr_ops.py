@@ -50,8 +50,23 @@ class LeaveRequestOut(BaseModel):
     approved_by: str | None
     created_at: datetime
     updated_at: datetime
+    employee_display_name: str | None = None
+    employee_code: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class LeaveTypeSummaryOut(BaseModel):
+    type: str
+    allocated: float
+    used: float
+    pending: float
+    remaining: float
+
+
+class LeaveYearSummaryOut(BaseModel):
+    year: int
+    types: list[LeaveTypeSummaryOut]
 
 
 class LeaveBalanceCreate(BaseModel):

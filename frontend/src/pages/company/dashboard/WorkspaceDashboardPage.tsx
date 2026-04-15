@@ -21,6 +21,8 @@ export function WorkspaceDashboardPage() {
 
   const quickLinks = role === 'employee'
     ? [
+        { to: `/company/${companyId}/my-profile`, label: 'My profile' },
+        { to: `/company/${companyId}/inbox`, label: 'Inbox' },
         { to: `/company/${companyId}/hr-ops`, label: 'My leave' },
         { to: `/company/${companyId}/performance`, label: 'My goals' },
         { to: `/company/${companyId}/learning`, label: 'My learning' },
@@ -66,6 +68,12 @@ export function WorkspaceDashboardPage() {
         {error ? <p className={styles.error}>{error}</p> : null}
         <section className={styles.card}>
           <h3 className={styles.h3}>Workspace summary</h3>
+          {role === 'employee' && !loadingDash && inboxCount > 0 ? (
+            <p className={styles.hint} style={{ marginBottom: '1rem' }}>
+              You have <strong>{inboxCount}</strong> open task{inboxCount === 1 ? '' : 's'} (profile, documents, and more).{' '}
+              <Link to={`/company/${companyId}/inbox`}>Open Inbox</Link> or <Link to={`/company/${companyId}/my-profile`}>My profile</Link>.
+            </p>
+          ) : null}
           <div className={styles.statGrid}>
             <div className={styles.statCard}><p className={styles.statNumber}>{loadingDash ? '…' : inboxCount}</p><p className={styles.statLabel}>Pending inbox tasks</p></div>
             <div className={styles.statCard}><p className={styles.statNumber}>{loadingDash ? '…' : (score ?? '—')}</p><p className={styles.statLabel}>Your score ({scoreActionCount} actions)</p></div>
