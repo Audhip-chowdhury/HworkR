@@ -1,6 +1,6 @@
 import { apiFetch } from './client'
 import { companyPath } from './paths'
-import type { Requisition } from './types'
+import type { HiringCriteria, Requisition } from './types'
 
 export type JobPosting = {
   id: string
@@ -20,6 +20,7 @@ export type Application = {
   posting_id: string
   company_id: string
   candidate_user_id: string
+  candidate_name?: string | null
   resume_url: string | null
   status: string
   stage: string
@@ -27,6 +28,7 @@ export type Application = {
   applied_at: string
   updated_at: string
   posting_title?: string | null
+  job_grade?: string | null
 }
 
 export type Interview = {
@@ -64,7 +66,7 @@ export function createRequisition(
     department_id?: string | null
     job_id?: string | null
     headcount: number
-    hiring_criteria_json?: Record<string, unknown> | null
+    hiring_criteria?: HiringCriteria | null
     approval_chain_json?: Record<string, unknown> | null
   },
 ) {
@@ -125,6 +127,17 @@ export function createInterview(
   return apiFetch<Interview>(
     companyPath(companyId, `/recruitment/applications/${applicationId}/interviews`),
     { method: 'POST', json: body },
+  )
+}
+
+export function updateInterview(
+  companyId: string,
+  interviewId: string,
+  body: { scheduled_at?: string | null; panel_json?: unknown; format?: string; feedback_json?: unknown; status?: string },
+) {
+  return apiFetch<Interview>(
+    companyPath(companyId, `/recruitment/interviews/${interviewId}`),
+    { method: 'PATCH', json: body },
   )
 }
 

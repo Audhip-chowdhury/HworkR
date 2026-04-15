@@ -32,6 +32,11 @@ def init_db() -> None:
             conn.commit()
         _sqlite_add_column_if_missing("companies", "location", "VARCHAR(255)")
         _sqlite_add_column_if_missing("employees", "onboarding_checklist_json", "TEXT")
+        _sqlite_add_column_if_missing("goals", "kpi_definition_id", "VARCHAR(36)")
+        _sqlite_add_column_if_missing("goals", "actual_achievement", "TEXT")
+        _sqlite_add_column_if_missing("goals", "manager_rating", "INTEGER")
+        _sqlite_add_column_if_missing("goals", "manager_comment", "TEXT")
+        _sqlite_add_column_if_missing("review_cycles", "goals_deadline", "VARCHAR(32)")
 
     with SessionLocal() as session:
         _seed_platform_admin(session)

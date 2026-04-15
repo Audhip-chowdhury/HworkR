@@ -153,6 +153,12 @@ export type Certificate = {
   verification_id: string
 }
 
+export type HiringCriteria = {
+  skills: string[]
+  experience: string | null
+  education: string | null
+}
+
 export type Requisition = {
   id: string
   company_id: string
@@ -161,7 +167,7 @@ export type Requisition = {
   job_id: string | null
   headcount: number
   status: string
-  hiring_criteria_json: Record<string, unknown> | null
+  hiring_criteria: HiringCriteria | null
   approval_chain_json: Record<string, unknown> | null
   created_at: string
   updated_at: string

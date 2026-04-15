@@ -1,7 +1,14 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+class ReviewCycleKpiDefinitionIn(BaseModel):
+    goal_key: str = Field(min_length=1, max_length=64)
+    goal_description: str = Field(min_length=1)
+    category: str | None = Field(default=None, max_length=255)
+    weight_percent: int | None = Field(default=None, ge=0, le=100)
 
 
 class ReviewCycleCreate(BaseModel):
@@ -9,7 +16,16 @@ class ReviewCycleCreate(BaseModel):
     type: str | None = Field(default=None, max_length=64)
     start_date: str | None = None
     end_date: str | None = None
+    goals_deadline: str | None = Field(default=None, max_length=32)
     status: str = Field(default="draft", max_length=32)
+    kpi_definitions: list[ReviewCycleKpiDefinitionIn] | None = None
+
+    @model_validator(mode="after")
+    def require_deadline_when_kpis(self) -> Self:
+        kpis = self.kpi_definitions or []
+        if len(kpis) > 0 and not (self.goals_deadline and self.goals_deadline.strip()):
+            raise ValueError("goals_deadline is required when KPI definitions are included")
+        return self
 
 
 class ReviewCycleOut(BaseModel):
@@ -19,8 +35,23 @@ class ReviewCycleOut(BaseModel):
     type: str | None
     start_date: str | None
     end_date: str | None
+    goals_deadline: str | None
     status: str
     created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ReviewCycleKpiDefinitionOut(BaseModel):
+    id: str
+    company_id: str
+    review_cycle_id: str
+    goal_key: str
+    goal_description: str
+    category: str | None
+    weight_percent: int | None
+    created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -39,9 +70,21 @@ class GoalUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     target: str | None = None
+    actual_achievement: str | None = None
+    manager_rating: int | None = None
+    manager_comment: str | None = None
     progress: int | None = Field(default=None, ge=0, le=100)
     status: str | None = Field(default=None, max_length=32)
     cycle_id: str | None = None
+
+    @field_validator("manager_rating")
+    @classmethod
+    def manager_rating_range(cls, v: int | None) -> int | None:
+        if v is None:
+            return None
+        if not 1 <= v <= 5:
+            raise ValueError("manager_rating must be between 1 and 5")
+        return v
 
 
 class GoalOut(BaseModel):
@@ -49,15 +92,57 @@ class GoalOut(BaseModel):
     company_id: str
     employee_id: str
     cycle_id: str | None
+    kpi_definition_id: str | None
     title: str
     description: str | None
     target: str | None
+    actual_achievement: str | None
+    manager_rating: int | None
+    manager_comment: str | None
     progress: int
     status: str
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class EmployeeCycleGoalRowOut(BaseModel):
+    kpi_definition: ReviewCycleKpiDefinitionOut
+    goal: GoalOut
+
+
+class EmployeeMyCycleGoalsGroupOut(BaseModel):
+    cycle: ReviewCycleOut
+    rows: list[EmployeeCycleGoalRowOut]
+    submitted_at: datetime | None = None
+
+
+class MyCycleGoalSubmitItem(BaseModel):
+    goal_id: str = Field(min_length=1, max_length=36)
+    description: str = ""
+    target: str = ""
+    actual_achievement: str = ""
+
+    @field_validator("description", "target", "actual_achievement", mode="before")
+    @classmethod
+    def strip_nonempty(cls, v: object) -> str:
+        if not isinstance(v, str):
+            raise TypeError("expected string")
+        s = v.strip()
+        if not s:
+            raise ValueError("must not be empty")
+        return s
+
+
+class SubmitMyCycleGoalsBody(BaseModel):
+    goals: list[MyCycleGoalSubmitItem]
+
+
+class SubmitMyCycleGoalsResponse(BaseModel):
+    review_cycle_id: str
+    submitted_at: datetime
+    message: str = "Your response has been recorded."
 
 
 class AssessmentCreate(BaseModel):

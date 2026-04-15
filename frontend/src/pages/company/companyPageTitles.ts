@@ -16,6 +16,14 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
       title: 'My profile',
       subtitle: 'Personal employee record',
     },
+    'my-goals': {
+      title: 'My review goals',
+      subtitle: 'Fill targets and achievements for notified review cycles',
+    },
+    'team-goals': {
+      title: 'Team goals review',
+      subtitle: "Rate and comment on your direct reports' goals",
+    },
     org: {
       title: 'Organizational structure',
       subtitle: 'Departments, positions, and reporting hierarchy',

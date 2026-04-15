@@ -8,6 +8,7 @@ export type ReviewCycle = {
   type: string | null
   start_date: string | null
   end_date: string | null
+  goals_deadline: string | null
   status: string
   created_at: string
 }
@@ -17,9 +18,13 @@ export type Goal = {
   company_id: string
   employee_id: string
   cycle_id: string | null
+  kpi_definition_id: string | null
   title: string
   description: string | null
   target: string | null
+  actual_achievement: string | null
+  manager_rating: number | null
+  manager_comment: string | null
   progress: number
   status: string
   created_at: string
@@ -91,12 +96,33 @@ export type SkillProfile = {
   updated_at: string
 }
 
+export type ReviewCycleKpiDefinitionIn = {
+  goal_key: string
+  goal_description: string
+  category?: string | null
+  weight_percent?: number | null
+}
+
+export type ReviewCycleKpiDefinition = {
+  id: string
+  company_id: string
+  review_cycle_id: string
+  goal_key: string
+  goal_description: string
+  category: string | null
+  weight_percent: number | null
+  created_at: string
+  updated_at: string
+}
+
 export type ReviewCycleCreate = {
   name: string
   type?: string | null
   start_date?: string | null
   end_date?: string | null
+  goals_deadline?: string | null
   status?: string
+  kpi_definitions?: ReviewCycleKpiDefinitionIn[] | null
 }
 
 export type GoalCreate = {
@@ -113,10 +139,40 @@ export type GoalUpdate = Partial<{
   title: string
   description: string | null
   target: string | null
+  actual_achievement: string | null
+  manager_rating: number | null
+  manager_comment: string | null
   progress: number
   status: string
   cycle_id: string | null
 }>
+
+export type EmployeeCycleGoalRow = {
+  kpi_definition: ReviewCycleKpiDefinition
+  goal: Goal
+}
+
+export type EmployeeMyCycleGoalsGroup = {
+  cycle: ReviewCycle
+  rows: EmployeeCycleGoalRow[]
+  /** Present when goals for this cycle have been submitted. */
+  submitted_at?: string | null
+}
+
+export type SubmitMyCycleGoalsPayload = {
+  goals: Array<{
+    goal_id: string
+    description: string
+    target: string
+    actual_achievement: string
+  }>
+}
+
+export type SubmitMyCycleGoalsResponse = {
+  review_cycle_id: string
+  submitted_at: string
+  message: string
+}
 
 export type AssessmentCreate = {
   employee_id: string
@@ -162,6 +218,19 @@ export const listReviewCycles = (companyId: string) =>
   apiFetch<ReviewCycle[]>(companyPath(companyId, '/performance/review-cycles'))
 export const createReviewCycle = (companyId: string, body: ReviewCycleCreate) =>
   apiFetch<ReviewCycle>(companyPath(companyId, '/performance/review-cycles'), { method: 'POST', json: body })
+export const listReviewCycleKpiDefinitions = (companyId: string, cycleId: string) =>
+  apiFetch<ReviewCycleKpiDefinition[]>(
+    companyPath(companyId, `/performance/review-cycles/${cycleId}/kpi-definitions`),
+  )
+export const listMyReviewCycleGoals = (companyId: string) =>
+  apiFetch<EmployeeMyCycleGoalsGroup[]>(companyPath(companyId, '/performance/my-review-cycle-goals'))
+
+export const submitMyReviewCycleGoals = (companyId: string, cycleId: string, body: SubmitMyCycleGoalsPayload) =>
+  apiFetch<SubmitMyCycleGoalsResponse>(
+    companyPath(companyId, `/performance/review-cycles/${cycleId}/submit-my-goals`),
+    { method: 'POST', json: body },
+  )
+
 export const listGoals = (companyId: string, employee_id?: string) =>
   apiFetch<Goal[]>(companyPath(companyId, `/performance/goals${employee_id ? `?employee_id=${encodeURIComponent(employee_id)}` : ''}`))
 export const createGoal = (companyId: string, body: GoalCreate) =>

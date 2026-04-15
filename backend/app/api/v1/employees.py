@@ -179,6 +179,25 @@ def update_my_employee_record(
     return emp
 
 
+@router.get("/my-direct-reports", response_model=list[EmployeeOut])
+def list_my_direct_reports(
+    company_id: str,
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[Employee]:
+    """Employees who report to the current user's employee record (same company)."""
+    user, _ = ctx
+    me = get_employee_for_user(db, company_id, user.id)
+    if me is None:
+        return []
+    r = db.execute(
+        select(Employee)
+        .where(Employee.company_id == company_id, Employee.manager_id == me.id)
+        .order_by(Employee.employee_code)
+    )
+    return list(r.scalars().all())
+
+
 @router.get("/{employee_id}", response_model=EmployeeOut)
 def get_employee(
     company_id: str,

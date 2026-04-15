@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 ApplicationStage = Literal[
@@ -16,11 +16,21 @@ ApplicationStage = Literal[
 ]
 
 
+class HiringCriteria(BaseModel):
+    """Structured hiring criteria stored in `requisitions.hiring_criteria_json`."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    skills: list[str] = Field(default_factory=list)
+    experience: str | None = Field(default=None, max_length=2000)
+    education: str | None = Field(default=None, max_length=2000)
+
+
 class RequisitionCreate(BaseModel):
     department_id: str | None = None
     job_id: str | None = None
     headcount: int = Field(default=1, ge=1, le=1000)
-    hiring_criteria_json: dict[str, Any] | None = None
+    hiring_criteria: HiringCriteria | None = None
     approval_chain_json: dict[str, Any] | None = None
 
 
@@ -32,12 +42,10 @@ class RequisitionOut(BaseModel):
     job_id: str | None
     headcount: int
     status: str
-    hiring_criteria_json: dict[str, Any] | None
+    hiring_criteria: HiringCriteria | None = None
     approval_chain_json: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class RequisitionUpdate(BaseModel):
@@ -45,7 +53,7 @@ class RequisitionUpdate(BaseModel):
     job_id: str | None = None
     headcount: int | None = Field(default=None, ge=1, le=1000)
     status: str | None = Field(default=None, min_length=1, max_length=32)
-    hiring_criteria_json: dict[str, Any] | None = None
+    hiring_criteria: HiringCriteria | None = None
     approval_chain_json: dict[str, Any] | None = None
 
 
@@ -109,6 +117,8 @@ class ApplicationOut(BaseModel):
 
 class ApplicationWithPostingOut(ApplicationOut):
     posting_title: str | None = None
+    candidate_name: str | None = None
+    job_grade: str | None = None
 
 
 class JobPostingPublicOut(JobPostingOut):

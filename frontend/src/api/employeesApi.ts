@@ -44,6 +44,10 @@ export function getMyEmployee(companyId: string) {
   return apiFetch<Employee>(companyPath(companyId, '/employees/me'))
 }
 
+export function listMyDirectReports(companyId: string) {
+  return apiFetch<Employee[]>(companyPath(companyId, '/employees/my-direct-reports'))
+}
+
 export function createEmployee(
   companyId: string,
   body: {

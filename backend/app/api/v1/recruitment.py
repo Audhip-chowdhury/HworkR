@@ -22,6 +22,7 @@ from app.schemas.recruitment import (
     CandidateOfferOut,
     ConvertToEmployeeRequest,
     ConvertToEmployeeResponse,
+    HiringCriteria,
     InterviewCreate,
     InterviewOut,
     InterviewUpdate,
@@ -41,6 +42,28 @@ from app.services.integration_hooks import publish_domain_event_post_commit
 from app.services.workflow_engine import create_instance, ensure_default_recruitment_template
 
 router = APIRouter(prefix="/companies/{company_id}/recruitment", tags=["recruitment"])
+
+
+def _requisition_to_out(req: Requisition) -> RequisitionOut:
+    hc: HiringCriteria | None = None
+    if req.hiring_criteria_json is not None:
+        try:
+            hc = HiringCriteria.model_validate(req.hiring_criteria_json)
+        except Exception:
+            hc = HiringCriteria()
+    return RequisitionOut(
+        id=req.id,
+        company_id=req.company_id,
+        created_by=req.created_by,
+        department_id=req.department_id,
+        job_id=req.job_id,
+        headcount=req.headcount,
+        status=req.status,
+        hiring_criteria=hc,
+        approval_chain_json=req.approval_chain_json,
+        created_at=req.created_at,
+        updated_at=req.updated_at,
+    )
 
 
 def _get_requisition_for_company(db: Session, company_id: str, requisition_id: str) -> Requisition:
@@ -96,14 +119,45 @@ def _posting_title_map(db: Session, posting_ids: set[str]) -> dict[str, str]:
     return {p.id: p.title for p in r.scalars().all()}
 
 
+def _posting_job_grade_map(db: Session, posting_ids: set[str]) -> dict[str, str | None]:
+    """Resolve job catalog grade per posting: posting → requisition → job_catalog.grade."""
+    if not posting_ids:
+        return {}
+    postings = list(db.execute(select(JobPosting).where(JobPosting.id.in_(posting_ids))).scalars().all())
+    req_ids = {p.requisition_id for p in postings}
+    if not req_ids:
+        return {p.id: None for p in postings}
+    reqs = {r.id: r for r in db.execute(select(Requisition).where(Requisition.id.in_(req_ids))).scalars().all()}
+    job_ids = {r.job_id for r in reqs.values() if r.job_id}
+    grades_by_job: dict[str, str | None] = {}
+    if job_ids:
+        for jc in db.execute(select(JobCatalogEntry).where(JobCatalogEntry.id.in_(job_ids))).scalars().all():
+            grades_by_job[jc.id] = jc.grade
+    out: dict[str, str | None] = {}
+    for p in postings:
+        req = reqs.get(p.requisition_id)
+        if not req or not req.job_id:
+            out[p.id] = None
+        else:
+            out[p.id] = grades_by_job.get(req.job_id)
+    return out
+
+
+def _user_name_map(db: Session, user_ids: set[str]) -> dict[str, str]:
+    if not user_ids:
+        return {}
+    r = db.execute(select(User).where(User.id.in_(user_ids)))
+    return {u.id: u.name for u in r.scalars().all()}
+
+
 @router.get("/requisitions", response_model=list[RequisitionOut])
 def list_requisitions(
     company_id: str,
     _: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
     db: Annotated[Session, Depends(get_db)],
-) -> list[Requisition]:
+) -> list[RequisitionOut]:
     r = db.execute(select(Requisition).where(Requisition.company_id == company_id).order_by(Requisition.created_at.desc()))
-    return list(r.scalars().all())
+    return [_requisition_to_out(x) for x in r.scalars().all()]
 
 
 @router.post("/requisitions", response_model=RequisitionOut, status_code=status.HTTP_201_CREATED)
@@ -115,7 +169,7 @@ def create_requisition(
         Depends(require_company_roles_path({"company_admin", "talent_acquisition"})),
     ],
     db: Annotated[Session, Depends(get_db)],
-) -> Requisition:
+) -> RequisitionOut:
     user, _ = ctx
     if body.department_id:
         d = db.execute(
@@ -130,6 +184,7 @@ def create_requisition(
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job catalog entry not found")
 
+    hiring_json = body.hiring_criteria.model_dump(mode="json") if body.hiring_criteria else None
     req = Requisition(
         id=uuid_str(),
         company_id=company_id,
@@ -138,7 +193,7 @@ def create_requisition(
         job_id=body.job_id,
         headcount=body.headcount,
         status="draft",
-        hiring_criteria_json=body.hiring_criteria_json,
+        hiring_criteria_json=hiring_json,
         approval_chain_json=body.approval_chain_json,
     )
     db.add(req)
@@ -153,7 +208,7 @@ def create_requisition(
     )
     db.commit()
     db.refresh(req)
-    return req
+    return _requisition_to_out(req)
 
 
 @router.patch("/requisitions/{requisition_id}", response_model=RequisitionOut)
@@ -166,10 +221,12 @@ def update_requisition(
         Depends(require_company_roles_path({"company_admin", "talent_acquisition"})),
     ],
     db: Annotated[Session, Depends(get_db)],
-) -> Requisition:
+) -> RequisitionOut:
     user, _ = ctx
     req = _get_requisition_for_company(db, company_id, requisition_id)
     data = body.model_dump(exclude_unset=True)
+    if "hiring_criteria" in data:
+        req.hiring_criteria_json = data.pop("hiring_criteria")
     prev_status = req.status
     if "department_id" in data and data["department_id"]:
         d = db.execute(
@@ -233,7 +290,7 @@ def update_requisition(
             actor_user_id=user.id,
             data={"status": req.status},
         )
-    return req
+    return _requisition_to_out(req)
 
 
 @router.get("/postings", response_model=list[JobPostingOut])
@@ -567,6 +624,8 @@ def list_applications(
         q = q.where(Application.stage == stage)
     apps = list(db.execute(q).scalars().all())
     titles = _posting_title_map(db, {a.posting_id for a in apps})
+    grades = _posting_job_grade_map(db, {a.posting_id for a in apps})
+    names = _user_name_map(db, {a.candidate_user_id for a in apps})
     return [
         ApplicationWithPostingOut(
             id=a.id,
@@ -580,6 +639,8 @@ def list_applications(
             applied_at=a.applied_at,
             updated_at=a.updated_at,
             posting_title=titles.get(a.posting_id),
+            candidate_name=names.get(a.candidate_user_id),
+            job_grade=grades.get(a.posting_id),
         )
         for a in apps
     ]

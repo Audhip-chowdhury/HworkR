@@ -1,12 +1,24 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { createPosting, listPostings, listRequisitions } from '../../../api/recruitmentApi'
+import { apiFetch } from '../../../api/client'
+import type { Requisition } from '../../../api/types'
 import styles from '../CompanyWorkspacePage.module.css'
+
+function requisitionSelectLabel(
+  r: Requisition,
+  deptById: Map<string, string>,
+  jobById: Map<string, string>,
+): string {
+  const dept = r.department_id ? deptById.get(r.department_id) ?? '—' : '—'
+  const role = r.job_id ? jobById.get(r.job_id) ?? '—' : '—'
+  return `${dept} / ${role}`
+}
 
 export function JobPostingsPage() {
   const { companyId = '' } = useParams()
   const [postings, setPostings] = useState<any[]>([])
-  const [requisitions, setRequisitions] = useState<any[]>([])
+  const [requisitions, setRequisitions] = useState<Requisition[]>([])
   const [requisitionId, setRequisitionId] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -16,15 +28,24 @@ export function JobPostingsPage() {
   const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deptById, setDeptById] = useState<Map<string, string>>(() => new Map())
+  const [jobById, setJobById] = useState<Map<string, string>>(() => new Map())
 
   async function refresh() {
     if (!companyId) return
     setLoading(true)
     setError(null)
     try {
-      const [p, r] = await Promise.all([listPostings(companyId), listRequisitions(companyId)])
+      const [p, r, departments, jobs] = await Promise.all([
+        listPostings(companyId),
+        listRequisitions(companyId),
+        apiFetch<Array<{ id: string; name: string }>>(`/companies/${companyId}/departments`),
+        apiFetch<Array<{ id: string; title: string }>>(`/companies/${companyId}/job-catalog`),
+      ])
       setPostings(p)
       setRequisitions(r)
+      setDeptById(new Map(departments.map((d) => [d.id, d.name])))
+      setJobById(new Map(jobs.map((j) => [j.id, j.title])))
       if (!requisitionId && r[0]) setRequisitionId(r[0].id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load postings')
@@ -57,12 +78,19 @@ export function JobPostingsPage() {
 
   return (
     <section className={styles.card}>
+      <div className={styles.moduleNav}>
+        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment`}>Back to Recruitment</Link>
+      </div>
       <h3 className={styles.h3}>Job postings</h3>
       {error ? <p className={styles.error}>{error}</p> : null}
       <div className={styles.positionForm}>
         <select className={styles.input} value={requisitionId} onChange={(e) => setRequisitionId(e.target.value)}>
           <option value="">Select requisition</option>
-          {requisitions.map((r) => <option key={r.id} value={r.id}>{r.id.slice(0, 8)}… ({r.status})</option>)}
+          {requisitions.map((r) => (
+            <option key={r.id} value={r.id}>
+              {requisitionSelectLabel(r, deptById, jobById)}
+            </option>
+          ))}
         </select>
         <input className={styles.input} placeholder="Posting title" value={title} onChange={(e) => setTitle(e.target.value)} />
         <textarea className={styles.input} style={{ minHeight: 80 }} placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />

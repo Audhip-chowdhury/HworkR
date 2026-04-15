@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { createOffer, listApplications, listOffers } from '../../../api/recruitmentApi'
+import { Link, useParams } from 'react-router-dom'
+import { type Application, createOffer, listApplications, listOffers } from '../../../api/recruitmentApi'
 import styles from '../CompanyWorkspacePage.module.css'
 
 export function OffersPage() {
   const { companyId = '' } = useParams()
-  const [apps, setApps] = useState<any[]>([])
+  const [apps, setApps] = useState<Application[]>([])
   const [offers, setOffers] = useState<any[]>([])
   const [applicationId, setApplicationId] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -49,13 +49,30 @@ export function OffersPage() {
 
   return (
     <section className={styles.card}>
+      <div className={styles.moduleNav}>
+        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment`}>Back to Recruitment</Link>
+      </div>
       <h3 className={styles.h3}>Offers</h3>
       {error ? <p className={styles.error}>{error}</p> : null}
       <div className={styles.positionForm}>
         <select className={styles.input} value={applicationId} onChange={(e) => setApplicationId(e.target.value)}>
           <option value="">Select application</option>
-          {apps.map((a) => <option key={a.id} value={a.id}>{a.posting_title ?? a.id.slice(0, 8)}</option>)}
+          {apps.map((a) => (
+            <option key={a.id} value={a.id}>
+              {(a.posting_title ?? a.id.slice(0, 8))} · Candidate: {a.candidate_name ?? `${a.candidate_user_id.slice(0, 8)}…`}
+            </option>
+          ))}
         </select>
+        <label className={styles.muted} style={{ display: 'block', marginTop: 8 }}>
+          Job grade (from catalog)
+          <input
+            className={styles.input}
+            readOnly
+            tabIndex={-1}
+            value={applicationId ? (apps.find((a) => a.id === applicationId)?.job_grade ?? '—') : ''}
+            placeholder="Select an application"
+          />
+        </label>
         <input className={styles.input} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         <textarea className={styles.input} style={{ minHeight: 90 }} value={compJson} onChange={(e) => setCompJson(e.target.value)} />
         <button className={styles.btnSm} disabled={pending} onClick={() => void onCreate()}>{pending ? 'Creating…' : 'Create offer'}</button>

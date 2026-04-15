@@ -27,6 +27,8 @@ import { EmployeeDetailPage } from './pages/company/employees/EmployeeDetailPage
 import { MembersPage } from './pages/company/members/MembersPage'
 import { HrOpsPage } from './pages/company/hr-ops/HrOpsPage'
 import { PerformancePage } from './pages/company/performance/PerformancePage'
+import { EmployeeMyGoalsPage } from './pages/company/performance/EmployeeMyGoalsPage'
+import { ManagerTeamGoalsPage } from './pages/company/performance/ManagerTeamGoalsPage'
 import { LearningPage } from './pages/company/learning/LearningPage'
 import { PayrollPage } from './pages/company/payroll/PayrollPage'
 import { BenefitsPage } from './pages/company/benefits/BenefitsPage'
@@ -103,6 +105,8 @@ export default function App() {
         <Route index element={<WorkspaceDashboardPage />} />
         <Route path="org" element={<CompanyOrgPage />} />
         <Route path="my-profile" element={<MyProfilePage />} />
+        <Route path="my-goals" element={<EmployeeMyGoalsPage />} />
+        <Route path="team-goals" element={<ManagerTeamGoalsPage />} />
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="employees/:employeeId" element={<EmployeeDetailPage />} />
         <Route path="members" element={<MembersPage />} />

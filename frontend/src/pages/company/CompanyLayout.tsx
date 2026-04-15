@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { listMyDirectReports } from '../../api/employeesApi'
 import { AppShell } from '../../components/layout/AppShell'
 import { LiveEventToasts } from '../../components/LiveEventToasts'
 import { NotificationsPanel } from '../../components/NotificationsPanel'
@@ -30,7 +32,36 @@ export function CompanyLayout() {
   }
 
   const displayCompany = entry.company.name
-  const navItems = companyNavItems(companyId, entry.membership)
+
+  const [employeeHasDirectReports, setEmployeeHasDirectReports] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (!companyId) return
+    if (entry.membership.role !== 'employee' && entry.membership.role !== 'hr_ops') {
+      setEmployeeHasDirectReports(null)
+      return
+    }
+    let cancelled = false
+    setEmployeeHasDirectReports(null)
+    void listMyDirectReports(companyId)
+      .then((list) => {
+        if (!cancelled) setEmployeeHasDirectReports(list.length > 0)
+      })
+      .catch(() => {
+        if (!cancelled) setEmployeeHasDirectReports(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, entry.membership.role])
+
+  const navItems = companyNavItems(
+    companyId,
+    entry.membership,
+    entry.membership.role === 'employee' || entry.membership.role === 'hr_ops'
+      ? { showTeamGoals: employeeHasDirectReports === true }
+      : undefined,
+  )
 
   return (
     <RealtimeEventsProvider>
