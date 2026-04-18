@@ -62,8 +62,12 @@ def export_requisitions(
     reqs = db.execute(
         select(Requisition).where(Requisition.company_id == company_id).order_by(Requisition.created_at.desc())
     ).scalars().all()
-    rows = [[r.id, r.status, str(r.headcount), r.created_by, str(r.created_at)] for r in reqs]
-    return _csv_response("requisitions.csv", rows, ["id", "status", "headcount", "created_by", "created_at"])
+    rows = [
+        [r.id, r.req_code or "", r.status, str(r.headcount), r.created_by, str(r.created_at)] for r in reqs
+    ]
+    return _csv_response(
+        "requisitions.csv", rows, ["id", "req_code", "status", "headcount", "created_by", "created_at"]
+    )
 
 
 @router.get("/recruitment/offers.csv")

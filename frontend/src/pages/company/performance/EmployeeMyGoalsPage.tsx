@@ -207,8 +207,7 @@ export function EmployeeMyGoalsPage() {
   )
 
   return (
-    <div className={styles.org}>
-      <section className={styles.card}>
+    <section className={styles.card}>
         <h3 className={styles.h3}>My review goals</h3>
         <p className={styles.muted}>
           Use the filter to switch between cycles you still need to submit and cycles you have already submitted. Pick a
@@ -400,8 +399,7 @@ export function EmployeeMyGoalsPage() {
             ) : null}
           </>
         ) : null}
-      </section>
-    </div>
+    </section>
   )
 }
 

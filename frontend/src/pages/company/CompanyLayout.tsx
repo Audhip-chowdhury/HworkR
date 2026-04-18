@@ -32,12 +32,11 @@ export function CompanyLayout() {
   }
 
   const displayCompany = entry.company.name
-
   const [employeeHasDirectReports, setEmployeeHasDirectReports] = useState<boolean | null>(null)
 
   useEffect(() => {
     if (!companyId) return
-    if (entry.membership.role !== 'employee' && entry.membership.role !== 'hr_ops') {
+    if (entry.membership.role !== 'employee') {
       setEmployeeHasDirectReports(null)
       return
     }
@@ -58,7 +57,7 @@ export function CompanyLayout() {
   const navItems = companyNavItems(
     companyId,
     entry.membership,
-    entry.membership.role === 'employee' || entry.membership.role === 'hr_ops'
+    entry.membership.role === 'employee'
       ? { showTeamGoals: employeeHasDirectReports === true }
       : undefined,
   )

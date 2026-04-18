@@ -1,20 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate, useParams } from 'react-router-dom'
+import { Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../../auth/AuthContext'
-import {
-  createAssessment,
-  createGoal,
-  createPip,
-  createReviewCycle,
-  listAssessments,
-  listGoals,
-  listPips,
-  listReviewCycles,
-  updateGoal,
-} from '../../../api/performanceLearningApi'
+import { createAssessment, createReviewCycle, listAssessments, listPips, listReviewCycles } from '../../../api/performanceLearningApi'
 import styles from '../CompanyWorkspacePage.module.css'
+import { GoalCycleHrTracking } from './GoalCycleHrTracking'
+import { PipsHrPanel } from './PipsHrPanel'
 
 type Tab = 'cycles' | 'goals' | 'assessments' | 'pips'
+
+function parseTabParam(v: string | null): Tab {
+  if (v === 'goals' || v === 'assessments' || v === 'pips' || v === 'cycles') return v
+  return 'cycles'
+}
 
 type PeriodType = 'quarterly' | 'biannual' | 'annual'
 
@@ -51,22 +48,35 @@ function parseWeight(w: string): number | null {
 
 export function PerformancePage() {
   const { companyId = '' } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { myCompanies } = useAuth()
   const entry = myCompanies.find((x) => x.company.id === companyId)
-  const [tab, setTab] = useState<Tab>('cycles')
+  const [tab, setTabState] = useState<Tab>(() => parseTabParam(searchParams.get('tab')))
+
+  useEffect(() => {
+    setTabState(parseTabParam(searchParams.get('tab')))
+  }, [searchParams])
+
+  function selectTab(next: Tab) {
+    setTabState(next)
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev)
+        if (next === 'cycles') n.delete('tab')
+        else n.set('tab', next)
+        return n
+      },
+      { replace: true },
+    )
+  }
   const [cycles, setCycles] = useState<any[]>([])
-  const [goals, setGoals] = useState<any[]>([])
   const [assessments, setAssessments] = useState<any[]>([])
   const [pips, setPips] = useState<any[]>([])
   const [employeeId, setEmployeeId] = useState('')
-  const [cycleId, setCycleId] = useState('')
-  const [goalTitle, setGoalTitle] = useState('')
-  const [goalTarget, setGoalTarget] = useState('')
   const [cycleName, setCycleName] = useState('')
   const [goalsDeadline, setGoalsDeadline] = useState('')
   const [periodType, setPeriodType] = useState<PeriodType>('quarterly')
   const [kpiRows, setKpiRows] = useState<KpiFormRow[]>(() => makeInitialKpiRows())
-  const [goalStatusFilter, setGoalStatusFilter] = useState('')
   const [cycleModalOpen, setCycleModalOpen] = useState(false)
   const [cycleFormError, setCycleFormError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -96,9 +106,8 @@ export function PerformancePage() {
     setLoading(true)
     setError(null)
     try {
-      const [c, g, a, p] = await Promise.all([listReviewCycles(companyId), listGoals(companyId), listAssessments(companyId), listPips(companyId)])
+      const [c, a, p] = await Promise.all([listReviewCycles(companyId), listAssessments(companyId), listPips(companyId)])
       setCycles(c)
-      setGoals(g)
       setAssessments(a)
       setPips(p)
     } catch (e) {
@@ -172,23 +181,6 @@ export function PerformancePage() {
     }
   }
 
-  async function addGoal() {
-    if (!employeeId || !goalTitle.trim()) return
-    setPending(true)
-    try {
-      await createGoal(companyId, { employee_id: employeeId, cycle_id: cycleId || null, title: goalTitle.trim(), target: goalTarget || null })
-      setGoalTitle('')
-      setGoalTarget('')
-      await refresh()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create goal')
-    } finally {
-      setPending(false)
-    }
-  }
-
-  const filteredGoals = goals.filter((g) => (goalStatusFilter ? g.status === goalStatusFilter : true))
-
   if (!entry) {
     return (
       <div className={styles.fallback}>
@@ -203,10 +195,10 @@ export function PerformancePage() {
   return (
     <div className={styles.org}>
       <div className={styles.tabBar}>
-        <button type="button" className={`${styles.tabBtn} ${tab === 'cycles' ? styles.tabBtnActive : ''}`} onClick={() => setTab('cycles')}>Review cycles</button>
-        <button type="button" className={`${styles.tabBtn} ${tab === 'goals' ? styles.tabBtnActive : ''}`} onClick={() => setTab('goals')}>Goals</button>
-        <button type="button" className={`${styles.tabBtn} ${tab === 'assessments' ? styles.tabBtnActive : ''}`} onClick={() => setTab('assessments')}>Assessments</button>
-        <button type="button" className={`${styles.tabBtn} ${tab === 'pips' ? styles.tabBtnActive : ''}`} onClick={() => setTab('pips')}>PIPs</button>
+        <button type="button" className={`${styles.tabBtn} ${tab === 'cycles' ? styles.tabBtnActive : ''}`} onClick={() => selectTab('cycles')}>Review cycles</button>
+        <button type="button" className={`${styles.tabBtn} ${tab === 'goals' ? styles.tabBtnActive : ''}`} onClick={() => selectTab('goals')}>Goals</button>
+        <button type="button" className={`${styles.tabBtn} ${tab === 'assessments' ? styles.tabBtnActive : ''}`} onClick={() => selectTab('assessments')}>Assessments</button>
+        <button type="button" className={`${styles.tabBtn} ${tab === 'pips' ? styles.tabBtnActive : ''}`} onClick={() => selectTab('pips')}>PIPs</button>
       </div>
       {error ? <p className={styles.error}>{error}</p> : null}
 
@@ -378,9 +370,49 @@ export function PerformancePage() {
         </section>
       ) : null}
 
-      {tab === 'goals' ? <section className={styles.card}><h3 className={styles.h3}>Goals</h3><div className={styles.inline}><input className={styles.input} placeholder="Employee id" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} /><select className={styles.input} value={cycleId} onChange={(e) => setCycleId(e.target.value)}><option value="">No cycle</option>{cycles.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select><input className={styles.input} placeholder="Goal title" value={goalTitle} onChange={(e) => setGoalTitle(e.target.value)} /><input className={styles.input} placeholder="Target" value={goalTarget} onChange={(e) => setGoalTarget(e.target.value)} /><button className={styles.btnSm} disabled={pending} onClick={() => void addGoal()}>Create goal</button></div><div className={styles.inline}><select className={styles.input} value={goalStatusFilter} onChange={(e) => setGoalStatusFilter(e.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="completed">Completed</option></select></div>{filteredGoals.map((g) => <p key={g.id} className={styles.muted}>{g.title} <span className={`${styles.badge} ${g.progress >= 80 ? styles.badgeGreen : styles.badgeAmber}`}>{g.progress}%</span> <button className={styles.linkBtn} onClick={() => void updateGoal(companyId, g.id, { progress: Math.min(100, g.progress + 10) }).then(() => refresh())}>+10%</button></p>)}{!loading && filteredGoals.length === 0 ? <p className={styles.muted}>No goals.</p> : null}</section> : null}
-      {tab === 'assessments' ? <section className={styles.card}><h3 className={styles.h3}>Assessments</h3><button className={styles.btnSm} disabled={pending || !employeeId} onClick={() => void createAssessment(companyId, { employee_id: employeeId || '', type: 'manager' }).then(() => refresh())}>Create assessment</button>{assessments.map((a) => <p key={a.id} className={styles.muted}>{a.type} · {a.submitted_at ?? 'draft'}</p>)}{!loading && assessments.length === 0 ? <p className={styles.muted}>No assessments.</p> : null}</section> : null}
-      {tab === 'pips' ? <section className={styles.card}><h3 className={styles.h3}>PIPs</h3><button className={styles.btnSm} disabled={pending || !employeeId} onClick={() => void createPip(companyId, { employee_id: employeeId || '', reason: 'Performance improvement' }).then(() => refresh())}>Create PIP</button>{pips.map((p) => <p key={p.id} className={styles.muted}>{p.status} · {p.reason ?? '—'}</p>)}{!loading && pips.length === 0 ? <p className={styles.muted}>No PIPs.</p> : null}</section> : null}
+      {tab === 'goals' ? (
+        <section className={styles.card}>
+          <h3 className={styles.h3} style={{ marginTop: 0 }}>
+            Goal cycle tracking
+          </h3>
+          <GoalCycleHrTracking companyId={companyId} cycles={cycles} parentLoading={loading} />
+        </section>
+      ) : null}
+      {tab === 'assessments' ? (
+        <section className={styles.card}>
+          <h3 className={styles.h3}>Assessments</h3>
+          <div className={styles.inline} style={{ marginBottom: '0.75rem' }}>
+            <input
+              className={styles.input}
+              placeholder="Employee id"
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value)}
+            />
+          </div>
+          <button
+            type="button"
+            className={styles.btnSm}
+            disabled={pending || !employeeId}
+            onClick={() => void createAssessment(companyId, { employee_id: employeeId || '', type: 'manager' }).then(() => refresh())}
+          >
+            Create assessment
+          </button>
+          {assessments.map((a) => (
+            <p key={a.id} className={styles.muted}>
+              {a.type} · {a.submitted_at ?? 'draft'}
+            </p>
+          ))}
+          {!loading && assessments.length === 0 ? <p className={styles.muted}>No assessments.</p> : null}
+        </section>
+      ) : null}
+      {tab === 'pips' ? (
+        <section className={styles.card}>
+          <h3 className={styles.h3} style={{ marginTop: 0 }}>
+            Performance improvement plans (PIP)
+          </h3>
+          <PipsHrPanel companyId={companyId} cycles={cycles} pips={pips} onRefresh={() => void refresh()} />
+        </section>
+      ) : null}
     </div>
   )
 }

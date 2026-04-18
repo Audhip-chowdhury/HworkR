@@ -37,7 +37,10 @@ from app.models.base import uuid_str
 from app.models.company import Company
 from app.models.employee import Employee
 from app.models.membership import CompanyMembership
+from app.models.position import Position
 from app.models.user import User
+
+from scripts.seed_department_job_catalog import ensure_department_job_catalog
 
 COMPANY_NAME = "Demo org tree (seed)"
 SHARED_PASSWORD = "demotree123"
@@ -126,6 +129,36 @@ def main() -> None:
 
         company_id = company.id
 
+        def ensure_peer_grade_positions() -> tuple[str, str]:
+            """Two different positions, same grade, for works-with / peer-review demos."""
+            grade = 40
+            specs = [
+                "Demo peer band — IC track A",
+                "Demo peer band — IC track B",
+            ]
+            found: list[str] = []
+            for name in specs:
+                p = db.execute(
+                    select(Position).where(Position.company_id == company_id, Position.name == name)
+                ).scalar_one_or_none()
+                if p is None:
+                    p = Position(
+                        id=uuid_str(),
+                        company_id=company_id,
+                        name=name,
+                        department_id=None,
+                        bucket="temporary",
+                        grade=grade,
+                        reports_to_id=None,
+                        works_with_id=None,
+                    )
+                    db.add(p)
+                    db.flush()
+                found.append(p.id)
+            return found[0], found[1]
+
+        pos_peer_a, pos_peer_b = ensure_peer_grade_positions()
+
         users: dict[str, User] = {}
         for email, name, _code in PEOPLE:
             users[email.lower()] = _get_or_create_user(
@@ -133,8 +166,8 @@ def main() -> None:
             )
         db.flush()
 
-        # Mrobbie is HR ops (Performance screen + HR workflows); others stay employee.
-        membership_roles = ("employee", "hr_ops", "employee", "employee")
+        # democeo: company_admin; mrobbie: HR ops (Performance + HR workflows); others: employee.
+        membership_roles = ("company_admin", "hr_ops", "employee", "employee")
         for (email, name, _code), mrole in zip(PEOPLE, membership_roles, strict=True):
             _ensure_membership(db, company_id, users[email.lower()].id, mrole)
         db.flush()
@@ -145,7 +178,7 @@ def main() -> None:
         kmgr_u = users["kopal.manager@demotree.example.com"]
         kopal_u = users["kopal@demotree.example.com"]
 
-        def emp_row(user: User, code: str, mgr_id: str | None) -> Employee:
+        def emp_row(user: User, code: str, mgr_id: str | None, *, position_id: str | None = None) -> Employee:
             e = db.execute(
                 select(Employee).where(Employee.company_id == company_id, Employee.user_id == user.id)
             ).scalar_one_or_none()
@@ -158,6 +191,7 @@ def main() -> None:
                     employee_code=code,
                     department_id=None,
                     job_id=None,
+                    position_id=position_id,
                     manager_id=mgr_id,
                     location_id=None,
                     status="active",
@@ -170,18 +204,26 @@ def main() -> None:
                 e.manager_id = mgr_id
                 e.employee_code = code
                 e.personal_info_json = {**(e.personal_info_json or {}), "display_name": display}
+                if position_id is not None:
+                    e.position_id = position_id
             db.flush()
             return e
 
         ceo_e = emp_row(ceo_u, "EMP-DEMO-CEO", None)
-        emp_row(mrobbie_u, "EMP-DEMO-MROBBIE", ceo_e.id)
-        kmgr_e = emp_row(kmgr_u, "EMP-DEMO-KMGR", ceo_e.id)
+        emp_row(mrobbie_u, "EMP-DEMO-MROBBIE", ceo_e.id, position_id=pos_peer_a)
+        kmgr_e = emp_row(kmgr_u, "EMP-DEMO-KMGR", ceo_e.id, position_id=pos_peer_b)
         emp_row(kopal_u, "EMP-DEMO-KOPAL", kmgr_e.id)
+
+        d_n, j_n = ensure_department_job_catalog(db, company_id)
+        print(f"Requisition form data: +{d_n} departments, +{j_n} job profiles (idempotent).")
 
         db.commit()
 
         print()
-        print("Membership: mrobbie@demotree.example.com -> hr_ops (others: employee).")
+        print("Membership: democeo@demotree.example.com -> company_admin; mrobbie@demotree.example.com -> hr_ops; others: employee.")
+        print(
+            "Positions: mrobbie and kopal.manager share grade 40 (different position rows) for peer-review / works-with."
+        )
         print()
         print("Reporting tree (manager_id):")
         print(f"  {ceo_u.email}  employee_id={ceo_e.id}  manager_id=None")

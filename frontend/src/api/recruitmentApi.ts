@@ -11,6 +11,10 @@ export type JobPosting = {
   requirements: string | null
   deadline: string | null
   status: string
+  /** Marked as posted to external boards (HR list includes this; candidate board omits it). */
+  posted?: boolean
+  /** User-defined reference / listing id (HR only; separate from internal UUID). */
+  posting_ref?: string | null
   created_at: string
   updated_at: string
 }
@@ -44,6 +48,11 @@ export type Interview = {
   updated_at: string
 }
 
+export type InterviewCalendarItem = Interview & {
+  posting_title?: string | null
+  candidate_name?: string | null
+}
+
 export type Offer = {
   id: string
   application_id: string
@@ -54,6 +63,24 @@ export type Offer = {
   sent_at: string
   responded_at: string | null
   posting_title?: string | null
+}
+
+export type ApplicationActivity = {
+  id: string
+  timestamp: string
+  application_id: string
+  posting_id: string
+  posting_title?: string | null
+  candidate_user_id: string
+  candidate_name?: string | null
+  actor_user_id?: string | null
+  actor_name?: string | null
+  action: string
+  previous_stage?: string | null
+  previous_status?: string | null
+  stage?: string | null
+  status?: string | null
+  via?: string | null
 }
 
 export function listRequisitions(companyId: string) {
@@ -83,8 +110,35 @@ export function patchRequisition(companyId: string, requisitionId: string, body:
   )
 }
 
-export function listPostings(companyId: string) {
-  return apiFetch<JobPosting[]>(companyPath(companyId, '/recruitment/postings'))
+export function listPostings(
+  companyId: string,
+  params?: { status?: string; posted?: 'true' | 'false'; search?: string },
+) {
+  const q = new URLSearchParams()
+  if (params?.status) q.set('status', params.status)
+  if (params?.posted) q.set('posted', params.posted)
+  if (params?.search?.trim()) q.set('search', params.search.trim())
+  const qs = q.toString()
+  return apiFetch<JobPosting[]>(companyPath(companyId, `/recruitment/postings${qs ? `?${qs}` : ''}`))
+}
+
+export function patchPosting(
+  companyId: string,
+  postingId: string,
+  body: Partial<{
+    title: string
+    description: string | null
+    requirements: string | null
+    deadline: string | null
+    status: string
+    posted: boolean
+    posting_ref: string | null
+  }>,
+) {
+  return apiFetch<JobPosting>(companyPath(companyId, `/recruitment/postings/${postingId}`), {
+    method: 'PATCH',
+    json: body,
+  })
 }
 
 export function createPosting(
@@ -97,9 +151,48 @@ export function createPosting(
   })
 }
 
+/** Public apply: globally unique `req_code` (6 chars). No company id in URL. */
+export function publicApplyByReqCode(
+  reqCode: string,
+  body: { email: string; password: string; name: string; resume_url?: string | null },
+) {
+  return apiFetch<{ application: Application; access_token: string; token_type: string }>(
+    `/recruitment/public-apply/${encodeURIComponent(reqCode)}`,
+    { method: 'POST', json: body },
+  )
+}
+
 export function listApplications(companyId: string, stage?: string) {
   const qs = stage ? `?stage=${encodeURIComponent(stage)}` : ''
   return apiFetch<Application[]>(companyPath(companyId, `/recruitment/applications${qs}`))
+}
+
+export function listApplicationActivity(
+  companyId: string,
+  params?: {
+    posting_id?: string
+    candidate_user_id?: string
+    application_id?: string
+    action?: string
+    date_from?: string
+    date_to?: string
+    from_stage?: string
+    to_stage?: string
+    limit?: number
+  },
+) {
+  const sp = new URLSearchParams()
+  if (params?.posting_id) sp.set('posting_id', params.posting_id)
+  if (params?.candidate_user_id) sp.set('candidate_user_id', params.candidate_user_id)
+  if (params?.application_id) sp.set('application_id', params.application_id)
+  if (params?.action) sp.set('action', params.action)
+  if (params?.date_from) sp.set('date_from', params.date_from)
+  if (params?.date_to) sp.set('date_to', params.date_to)
+  if (params?.from_stage) sp.set('from_stage', params.from_stage)
+  if (params?.to_stage) sp.set('to_stage', params.to_stage)
+  if (params?.limit != null) sp.set('limit', String(params.limit))
+  const qs = sp.toString() ? `?${sp.toString()}` : ''
+  return apiFetch<ApplicationActivity[]>(companyPath(companyId, `/recruitment/application-activity${qs}`))
 }
 
 export function updateApplicationStage(
@@ -117,6 +210,17 @@ export function listInterviews(companyId: string, applicationId: string) {
   return apiFetch<Interview[]>(
     companyPath(companyId, `/recruitment/applications/${applicationId}/interviews`),
   )
+}
+
+export function listCompanyInterviews(
+  companyId: string,
+  params?: { date_from?: string; date_to?: string },
+) {
+  const sp = new URLSearchParams()
+  if (params?.date_from) sp.set('date_from', params.date_from)
+  if (params?.date_to) sp.set('date_to', params.date_to)
+  const qs = sp.toString() ? `?${sp.toString()}` : ''
+  return apiFetch<InterviewCalendarItem[]>(companyPath(companyId, `/recruitment/interviews${qs}`))
 }
 
 export function createInterview(

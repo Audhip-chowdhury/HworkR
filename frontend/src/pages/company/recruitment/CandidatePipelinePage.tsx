@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useRealtimeEvents } from '../../../context/RealtimeEventsContext'
 import { listApplications, updateApplicationStage } from '../../../api/recruitmentApi'
 import styles from '../CompanyWorkspacePage.module.css'
 
 const PIPELINE_ORDER = ['applied', 'screened', 'phone_screen', 'interview', 'assessment', 'offer', 'hired']
-const STAGES = [...PIPELINE_ORDER, 'rejected']
+/** Board columns only — no "hired" panel; candidates who are hired leave this view (still movable via offer flow / API). */
+const STAGES = ['applied', 'screened', 'phone_screen', 'interview', 'assessment', 'offer', 'rejected']
 
 function allowedNextStages(current: string): string[] {
   if (current === 'hired') return ['hired']
@@ -25,11 +27,24 @@ function allowedNextStages(current: string): string[] {
 
 export function CandidatePipelinePage() {
   const { companyId = '' } = useParams()
+  const { events } = useRealtimeEvents()
+  const lastSeenEventId = useRef(0)
+  const alignedStreamAfterLoad = useRef(false)
   const [apps, setApps] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [pendingId, setPendingId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+
+  const refreshQuiet = useCallback(async () => {
+    if (!companyId) return
+    setError(null)
+    try {
+      setApps(await listApplications(companyId))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load pipeline')
+    }
+  }, [companyId])
 
   async function refresh() {
     if (!companyId) return
@@ -44,7 +59,27 @@ export function CandidatePipelinePage() {
     }
   }
 
+  useEffect(() => {
+    lastSeenEventId.current = 0
+    alignedStreamAfterLoad.current = false
+  }, [companyId])
+
   useEffect(() => { void refresh() }, [companyId])
+
+  useEffect(() => {
+    if (loading || !companyId) return
+    const head = events[0]
+    if (!alignedStreamAfterLoad.current) {
+      alignedStreamAfterLoad.current = true
+      lastSeenEventId.current = head?.id ?? 0
+      return
+    }
+    if (!head || head.id === lastSeenEventId.current) return
+    lastSeenEventId.current = head.id
+    const ev = head.envelope
+    if (ev.company_id !== companyId || ev.event_type !== 'application.created') return
+    void refreshQuiet()
+  }, [events, companyId, loading, refreshQuiet])
 
   async function move(id: string, stage: string) {
     const appRow = apps.find((a) => a.id === id)
@@ -67,6 +102,7 @@ export function CandidatePipelinePage() {
     <div className={styles.org}>
       <div className={styles.moduleNav}>
         <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment`}>Back to Recruitment</Link>
+        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/tracking`}>Tracking</Link>
       </div>
       {error ? <p className={styles.error}>{error}</p> : null}
       <input className={styles.input} placeholder="Filter by posting/candidate" value={query} onChange={(e) => setQuery(e.target.value)} />

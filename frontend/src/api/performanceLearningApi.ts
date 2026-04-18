@@ -174,6 +174,39 @@ export type SubmitMyCycleGoalsResponse = {
   message: string
 }
 
+export type PeerReviewCycleCard = {
+  cycle: ReviewCycle
+  peer_nominations_submitted_at?: string | null
+  selected_reviewer_employee_ids: string[]
+}
+
+export type SubmitPeerReviewNominationsResponse = {
+  review_cycle_id: string
+  submitted_at: string
+  reviewers_notified: number
+}
+
+export type PeerReviewPendingRequest = {
+  review_cycle_id: string
+  cycle_name: string
+  subject_employee_id: string
+  subject_display_name: string
+  subject_display_email: string
+}
+
+export type SubmitPeerReviewFeedbackPayload = {
+  subject_employee_id: string
+  strengths: string
+  improvements: string
+  additional_feedback?: string | null
+}
+
+export type SubmitPeerReviewFeedbackResponse = {
+  review_cycle_id: string
+  subject_employee_id: string
+  message: string
+}
+
 export type AssessmentCreate = {
   employee_id: string
   cycle_id?: string | null
@@ -190,6 +223,18 @@ export type PipCreate = {
   start_date?: string | null
   end_date?: string | null
   status?: string
+  /** When true, employee receives an in-app notification that they were placed in PIP. */
+  notify_employee?: boolean
+}
+
+export type PipAtRiskEmployee = {
+  employee_id: string
+  employee_display_name: string
+  employee_display_email: string
+  employee_code: string
+  avg_manager_rating: number
+  manager_rated_goal_count: number
+  review_cycle_id: string | null
 }
 
 export type CourseCreate = {
@@ -222,12 +267,67 @@ export const listReviewCycleKpiDefinitions = (companyId: string, cycleId: string
   apiFetch<ReviewCycleKpiDefinition[]>(
     companyPath(companyId, `/performance/review-cycles/${cycleId}/kpi-definitions`),
   )
+
+export type GoalCycleEmployeeTracking = {
+  employee_id: string
+  employee_display_name: string
+  employee_display_email: string
+  employee_code: string
+  manager_employee_id: string | null
+  manager_display_name: string | null
+  goals_submitted: boolean
+  goals_submitted_at: string | null
+  kpi_goal_count: number
+  manager_rated_goal_count: number
+  manager_review_status: string
+  avg_manager_rating: number | null
+  nominated_peer_count: number
+  nominated_peer_display_names: string[]
+  peer_reviews_received_count: number
+  peer_reviewer_display_names: string[]
+}
+
+export type GoalCycleTracking = {
+  review_cycle: ReviewCycle
+  rows: GoalCycleEmployeeTracking[]
+}
+
+export const listGoalCycleTracking = (companyId: string, cycleId: string) =>
+  apiFetch<GoalCycleTracking>(
+    companyPath(companyId, `/performance/review-cycles/${cycleId}/goal-cycle-tracking`),
+  )
 export const listMyReviewCycleGoals = (companyId: string) =>
   apiFetch<EmployeeMyCycleGoalsGroup[]>(companyPath(companyId, '/performance/my-review-cycle-goals'))
 
 export const submitMyReviewCycleGoals = (companyId: string, cycleId: string, body: SubmitMyCycleGoalsPayload) =>
   apiFetch<SubmitMyCycleGoalsResponse>(
     companyPath(companyId, `/performance/review-cycles/${cycleId}/submit-my-goals`),
+    { method: 'POST', json: body },
+  )
+
+export const listMyPeerReviewCycles = (companyId: string) =>
+  apiFetch<PeerReviewCycleCard[]>(companyPath(companyId, '/performance/my-peer-review-cycles'))
+
+export const listMyPendingPeerFeedbackRequests = (companyId: string) =>
+  apiFetch<PeerReviewPendingRequest[]>(companyPath(companyId, '/performance/my-pending-peer-feedback-requests'))
+
+export const submitPeerReviewFeedback = (
+  companyId: string,
+  cycleId: string,
+  body: SubmitPeerReviewFeedbackPayload,
+) =>
+  apiFetch<SubmitPeerReviewFeedbackResponse>(
+    companyPath(companyId, `/performance/review-cycles/${cycleId}/submit-peer-feedback`),
+    { method: 'POST', json: body },
+  )
+
+export const submitPeerReviewNominations = (
+  companyId: string,
+  cycleId: string,
+  body: { reviewer_employee_ids: string[] },
+) =>
+  apiFetch<SubmitPeerReviewNominationsResponse>(
+    companyPath(companyId, `/performance/review-cycles/${cycleId}/submit-peer-review-nominations`),
     { method: 'POST', json: body },
   )
 
@@ -243,6 +343,15 @@ export const createAssessment = (companyId: string, body: AssessmentCreate) =>
   apiFetch<Assessment>(companyPath(companyId, '/performance/assessments'), { method: 'POST', json: body })
 export const listPips = (companyId: string, employee_id?: string) =>
   apiFetch<Pip[]>(companyPath(companyId, `/performance/pips${employee_id ? `?employee_id=${encodeURIComponent(employee_id)}` : ''}`))
+export const listPipAtRiskEmployees = (companyId: string, opts?: { review_cycle_id?: string; rating_below?: number }) => {
+  const q = new URLSearchParams()
+  if (opts?.review_cycle_id) q.set('review_cycle_id', opts.review_cycle_id)
+  if (opts?.rating_below != null) q.set('rating_below', String(opts.rating_below))
+  const qs = q.toString()
+  return apiFetch<PipAtRiskEmployee[]>(
+    companyPath(companyId, `/performance/pips/at-risk-employees${qs ? `?${qs}` : ''}`),
+  )
+}
 export const createPip = (companyId: string, body: PipCreate) =>
   apiFetch<Pip>(companyPath(companyId, '/performance/pips'), { method: 'POST', json: body })
 export const listCourses = (companyId: string) =>

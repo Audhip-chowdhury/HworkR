@@ -8,6 +8,7 @@ export type Employee = {
   employee_code: string
   department_id: string | null
   job_id: string | null
+  position_id: string | null
   manager_id: string | null
   location_id: string | null
   status: string
@@ -32,6 +33,67 @@ export type LifecycleEvent = {
   created_at: string
 }
 
+export type EmployeeDocumentRow = {
+  id: string
+  doc_type: string
+  status: string
+  file_url: string | null
+  notes: string | null
+  meta_json: Record<string, unknown> | null
+  submitted_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type EmployeeSummary = {
+  id: string
+  employee_code: string
+  display_name: string
+  display_email: string
+  status: string
+}
+
+export type WorksWithPeer = {
+  employee_id: string
+  employee_code: string
+  display_name: string
+  display_email: string
+  position_id: string
+  position_name: string
+  grade: number
+}
+
+export type EmployeeDetail = Employee & {
+  display_name: string
+  display_email: string
+  department_name: string | null
+  job_title: string | null
+  job_grade: string | null
+  manager_name: string | null
+  location_name: string | null
+  documents: EmployeeDocumentRow[]
+}
+
+export function listEmployeeSummaries(companyId: string) {
+  return apiFetch<EmployeeSummary[]>(companyPath(companyId, '/employees/summary'))
+}
+
+export function getEmployeeDetail(companyId: string, employeeId: string) {
+  return apiFetch<EmployeeDetail>(companyPath(companyId, `/employees/${employeeId}/detail`))
+}
+
+export function patchEmployeeDocument(
+  companyId: string,
+  employeeId: string,
+  docType: string,
+  body: { status?: 'missing' | 'submitted'; file_url?: string | null; notes?: string | null },
+) {
+  return apiFetch<EmployeeDocumentRow>(
+    companyPath(companyId, `/employees/${employeeId}/documents/${encodeURIComponent(docType)}`),
+    { method: 'PATCH', json: body },
+  )
+}
+
 export function listEmployees(companyId: string) {
   return apiFetch<Employee[]>(companyPath(companyId, '/employees'))
 }
@@ -48,6 +110,10 @@ export function listMyDirectReports(companyId: string) {
   return apiFetch<Employee[]>(companyPath(companyId, '/employees/my-direct-reports'))
 }
 
+export function listMyWorksWithPeers(companyId: string) {
+  return apiFetch<WorksWithPeer[]>(companyPath(companyId, '/employees/me/works-with-peers'))
+}
+
 export function createEmployee(
   companyId: string,
   body: {
@@ -55,6 +121,7 @@ export function createEmployee(
     employee_code: string
     department_id?: string | null
     job_id?: string | null
+    position_id?: string | null
     manager_id?: string | null
     location_id?: string | null
     status?: string
@@ -75,6 +142,7 @@ export function updateEmployee(
     employee_code: string
     department_id: string | null
     job_id: string | null
+    position_id: string | null
     manager_id: string | null
     location_id: string | null
     status: string
@@ -95,6 +163,19 @@ export function patchMyEmployee(
   body: { personal_info_json?: Record<string, unknown> | null; documents_json?: Record<string, unknown> | null },
 ) {
   return apiFetch<Employee>(companyPath(companyId, '/employees/me'), { method: 'PATCH', json: body })
+}
+
+export function listMyEmployeeDocuments(companyId: string) {
+  return apiFetch<EmployeeDocumentRow[]>(companyPath(companyId, '/employees/me/documents'))
+}
+
+export function uploadMyEmployeeDocument(companyId: string, docType: string, file: File) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return apiFetch<EmployeeDocumentRow>(
+    companyPath(companyId, `/employees/me/documents/${encodeURIComponent(docType)}/upload`),
+    { method: 'POST', body: fd },
+  )
 }
 
 export function updateOnboardingChecklist(

@@ -145,6 +145,71 @@ class SubmitMyCycleGoalsResponse(BaseModel):
     message: str = "Your response has been recorded."
 
 
+class PeerReviewCycleCardOut(BaseModel):
+    cycle: ReviewCycleOut
+    peer_nominations_submitted_at: datetime | None = None
+    selected_reviewer_employee_ids: list[str] = Field(default_factory=list)
+
+
+class SubmitPeerReviewNominationsBody(BaseModel):
+    reviewer_employee_ids: list[str] = Field(min_length=1, max_length=3)
+
+    @field_validator("reviewer_employee_ids")
+    @classmethod
+    def unique_nonempty_ids(cls, v: list[str]) -> list[str]:
+        ids = [str(x).strip() for x in v if str(x).strip()]
+        if not ids:
+            raise ValueError("At least one reviewer_employee_id is required")
+        if len(ids) > 3:
+            raise ValueError("At most 3 peer reviewers are allowed")
+        if len(ids) != len(set(ids)):
+            raise ValueError("reviewer_employee_ids must be unique")
+        return ids
+
+
+class SubmitPeerReviewNominationsResponse(BaseModel):
+    review_cycle_id: str
+    submitted_at: datetime
+    reviewers_notified: int
+
+
+class PeerReviewPendingRequestOut(BaseModel):
+    review_cycle_id: str
+    cycle_name: str
+    subject_employee_id: str
+    subject_display_name: str
+    subject_display_email: str
+
+
+class SubmitPeerReviewFeedbackBody(BaseModel):
+    subject_employee_id: str = Field(min_length=1, max_length=36)
+    strengths: str = Field(min_length=1)
+    improvements: str = Field(min_length=1)
+    additional_feedback: str | None = None
+
+    @field_validator("strengths", "improvements")
+    @classmethod
+    def strip_required_text(cls, v: str) -> str:
+        s = str(v).strip()
+        if not s:
+            raise ValueError("must not be empty")
+        return s
+
+    @field_validator("additional_feedback")
+    @classmethod
+    def optional_strip(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s or None
+
+
+class SubmitPeerReviewFeedbackResponse(BaseModel):
+    review_cycle_id: str
+    subject_employee_id: str
+    message: str = "Peer feedback saved."
+
+
 class AssessmentCreate(BaseModel):
     employee_id: str
     cycle_id: str | None = None
@@ -176,6 +241,19 @@ class PipCreate(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     status: str = Field(default="active", max_length=32)
+    notify_employee: bool = False
+
+
+class PipAtRiskEmployeeOut(BaseModel):
+    """Employees whose average manager KPI goal rating is below the configured threshold."""
+
+    employee_id: str
+    employee_display_name: str
+    employee_display_email: str
+    employee_code: str
+    avg_manager_rating: float
+    manager_rated_goal_count: int
+    review_cycle_id: str | None = None
 
 
 class PipOut(BaseModel):
@@ -264,3 +342,29 @@ class SkillProfileOut(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class GoalCycleEmployeeTrackingOut(BaseModel):
+    """HR console: one row per employee in the goals program for a review cycle."""
+
+    employee_id: str
+    employee_display_name: str
+    employee_display_email: str
+    employee_code: str
+    manager_employee_id: str | None = None
+    manager_display_name: str | None = None
+    goals_submitted: bool
+    goals_submitted_at: datetime | None = None
+    kpi_goal_count: int
+    manager_rated_goal_count: int
+    manager_review_status: str
+    avg_manager_rating: float | None = None
+    nominated_peer_count: int = 0
+    nominated_peer_display_names: list[str] = Field(default_factory=list)
+    peer_reviews_received_count: int = 0
+    peer_reviewer_display_names: list[str] = Field(default_factory=list)
+
+
+class GoalCycleTrackingOut(BaseModel):
+    review_cycle: ReviewCycleOut
+    rows: list[GoalCycleEmployeeTrackingOut]

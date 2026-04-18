@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -9,6 +9,7 @@ class EmployeeCreate(BaseModel):
     employee_code: str = Field(min_length=1, max_length=64)
     department_id: str | None = None
     job_id: str | None = None
+    position_id: str | None = None
     manager_id: str | None = None
     location_id: str | None = None
     status: str = Field(default="active", max_length=32)
@@ -23,6 +24,7 @@ class EmployeeUpdate(BaseModel):
     employee_code: str | None = Field(default=None, min_length=1, max_length=64)
     department_id: str | None = None
     job_id: str | None = None
+    position_id: str | None = None
     manager_id: str | None = None
     location_id: str | None = None
     status: str | None = Field(default=None, max_length=32)
@@ -46,6 +48,7 @@ class EmployeeOut(BaseModel):
     employee_code: str
     department_id: str | None
     job_id: str | None
+    position_id: str | None
     manager_id: str | None
     location_id: str | None
     status: str
@@ -84,3 +87,55 @@ class LifecycleEventOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class EmployeeDocumentOut(BaseModel):
+    id: str
+    doc_type: str
+    status: str
+    file_url: str | None
+    notes: str | None
+    meta_json: dict[str, Any] | None = None
+    submitted_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EmployeeDocumentPatch(BaseModel):
+    status: Literal["missing", "submitted"] | None = None
+    file_url: str | None = None
+    notes: str | None = None
+    meta_json: dict[str, Any] | None = None
+
+
+class EmployeeSummaryOut(BaseModel):
+    id: str
+    employee_code: str
+    display_name: str
+    display_email: str
+    status: str
+
+
+class WorksWithPeerOut(BaseModel):
+    """Colleague with the same org position grade who reports to the same manager as the viewer."""
+
+    employee_id: str
+    employee_code: str
+    display_name: str
+    display_email: str
+    position_id: str
+    position_name: str
+    grade: int
+
+
+class EmployeeDetailOut(EmployeeOut):
+    display_name: str
+    display_email: str
+    department_name: str | None = None
+    job_title: str | None = None
+    job_grade: str | None = None
+    manager_name: str | None = None
+    location_name: str | None = None
+    documents: list[EmployeeDocumentOut] = Field(default_factory=list)

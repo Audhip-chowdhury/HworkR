@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { createInterview, listApplications, listInterviews, updateInterview } from '../../../api/recruitmentApi'
+import { InterviewsCalendarPanel } from './InterviewsCalendarPanel'
 import styles from '../CompanyWorkspacePage.module.css'
 
 function toLocalInputValue(iso: string | null | undefined): string {
@@ -25,6 +26,7 @@ export function InterviewsPage() {
   const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<'list' | 'calendar'>('list')
 
   useEffect(() => {
     if (!companyId) return
@@ -144,6 +146,35 @@ export function InterviewsPage() {
         <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment`}>Back to Recruitment</Link>
       </div>
       <h3 className={styles.h3}>Interviews</h3>
+      <div className={styles.tabBar} role="tablist" aria-label="Interview views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'list'}
+          className={tab === 'list' ? `${styles.tabBtn} ${styles.tabBtnActive}` : styles.tabBtn}
+          onClick={() => setTab('list')}
+        >
+          List & schedule
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'calendar'}
+          className={tab === 'calendar' ? `${styles.tabBtn} ${styles.tabBtnActive}` : styles.tabBtn}
+          onClick={() => setTab('calendar')}
+        >
+          Calendar
+        </button>
+      </div>
+
+      {tab === 'calendar' ? (
+        <div style={{ marginTop: '0.5rem' }}>
+          <InterviewsCalendarPanel companyId={companyId} />
+        </div>
+      ) : null}
+
+      {tab === 'list' ? (
+        <>
       {error ? <p className={styles.error}>{error}</p> : null}
       {loading ? <p className={styles.muted}>Loading applications…</p> : null}
       <div className={styles.inline} style={{ marginBottom: '0.75rem' }}>
@@ -206,6 +237,8 @@ export function InterviewsPage() {
           ) : null}
         </div>
       ))}
+        </>
+      ) : null}
     </section>
   )
 }

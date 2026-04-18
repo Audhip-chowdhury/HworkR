@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext'
 import { CertificationPage } from './pages/company/certification/CertificationPage'
 import { CompanyLayout } from './pages/company/CompanyLayout'
@@ -10,6 +10,7 @@ import { CandidatePipelinePage } from './pages/company/recruitment/CandidatePipe
 import { InterviewsPage } from './pages/company/recruitment/InterviewsPage'
 import { OffersPage } from './pages/company/recruitment/OffersPage'
 import { CandidatePortalPage } from './pages/company/recruitment/CandidatePortalPage'
+import { CandidateTrackingPage } from './pages/company/recruitment/CandidateTrackingPage'
 import { ScenariosPage } from './pages/company/scenarios/ScenariosPage'
 import { TrackingPage } from './pages/company/tracking/TrackingPage'
 import { WebhooksPage } from './pages/company/webhooks/WebhooksPage'
@@ -22,12 +23,25 @@ import { RegisterPage } from './pages/RegisterPage'
 import { PlatformCompaniesPage } from './pages/platform/PlatformCompaniesPage'
 import { RegisterCompanyPage } from './pages/RegisterCompanyPage'
 import { WorkspaceDashboardPage } from './pages/company/dashboard/WorkspaceDashboardPage'
-import { EmployeesPage } from './pages/company/employees/EmployeesPage'
+import {
+  EmployeesLifecyclePage,
+  EmployeesProfilePage,
+} from './pages/company/employees/EmployeesPage'
+import { LeaveApprovalsPage } from './pages/company/leave/LeaveApprovalsPage'
+import { LeaveBalancesPage } from './pages/company/leave/LeaveBalancesPage'
+import { LeaveHolidaysPage } from './pages/company/leave/LeaveHolidaysPage'
+import { LeavePoliciesPage } from './pages/company/leave/LeavePoliciesPage'
+import { LeaveRequestPage } from './pages/company/leave/LeaveRequestPage'
+import { AuditTrailPage } from './pages/company/audits/AuditTrailPage'
+import { PolicyDocumentsPage } from './pages/company/audits/PolicyDocumentsPage'
+import { PolicyPublishPage } from './pages/company/audits/PolicyPublishPage'
 import { EmployeeDetailPage } from './pages/company/employees/EmployeeDetailPage'
 import { MembersPage } from './pages/company/members/MembersPage'
 import { HrOpsPage } from './pages/company/hr-ops/HrOpsPage'
 import { PerformancePage } from './pages/company/performance/PerformancePage'
 import { EmployeeMyGoalsPage } from './pages/company/performance/EmployeeMyGoalsPage'
+import { MyGoalsLayout } from './pages/company/performance/MyGoalsLayout'
+import { PeerReviewPage } from './pages/company/performance/PeerReviewPage'
 import { ManagerTeamGoalsPage } from './pages/company/performance/ManagerTeamGoalsPage'
 import { LearningPage } from './pages/company/learning/LearningPage'
 import { PayrollPage } from './pages/company/payroll/PayrollPage'
@@ -36,6 +50,7 @@ import { SurveysPage } from './pages/company/surveys/SurveysPage'
 import { InboxPage } from './pages/company/inbox/InboxPage'
 import { AnalyticsPage } from './pages/company/analytics/AnalyticsPage'
 import { MyProfilePage } from './pages/company/employees/MyProfilePage'
+import { ProgressPage } from './pages/company/progress/ProgressPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -48,6 +63,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   if (!user) return <Navigate to="/login" replace />
   return children
+}
+
+function EmployeesIndexRedirect() {
+  const { companyId = '' } = useParams()
+  return <Navigate to={`/company/${companyId}/employees/profile`} replace />
+}
+
+function LeaveIndexRedirect() {
+  const { companyId = '' } = useParams()
+  return <Navigate to={`/company/${companyId}/leave/policies`} replace />
+}
+
+function AuditsIndexRedirect() {
+  const { companyId = '' } = useParams()
+  return <Navigate to={`/company/${companyId}/audits/trail`} replace />
 }
 
 function PlatformAdminRoute({ children }: { children: React.ReactNode }) {
@@ -105,9 +135,24 @@ export default function App() {
         <Route index element={<WorkspaceDashboardPage />} />
         <Route path="org" element={<CompanyOrgPage />} />
         <Route path="my-profile" element={<MyProfilePage />} />
-        <Route path="my-goals" element={<EmployeeMyGoalsPage />} />
+        <Route path="my-goals" element={<MyGoalsLayout />}>
+          <Route index element={<EmployeeMyGoalsPage />} />
+          <Route path="peer-review" element={<PeerReviewPage />} />
+        </Route>
         <Route path="team-goals" element={<ManagerTeamGoalsPage />} />
-        <Route path="employees" element={<EmployeesPage />} />
+        <Route path="employees/profile" element={<EmployeesProfilePage />} />
+        <Route path="employees/lifecycle" element={<EmployeesLifecyclePage />} />
+        <Route path="leave/policies" element={<LeavePoliciesPage />} />
+        <Route path="leave/holidays" element={<LeaveHolidaysPage />} />
+        <Route path="leave/approvals" element={<LeaveApprovalsPage />} />
+        <Route path="leave/request" element={<LeaveRequestPage />} />
+        <Route path="leave/balances" element={<LeaveBalancesPage />} />
+        <Route path="leave" element={<LeaveIndexRedirect />} />
+        <Route path="audits/trail" element={<AuditTrailPage />} />
+        <Route path="audits/policies/publish" element={<PolicyPublishPage />} />
+        <Route path="audits/policies" element={<PolicyDocumentsPage />} />
+        <Route path="audits" element={<AuditsIndexRedirect />} />
+        <Route path="employees" element={<EmployeesIndexRedirect />} />
         <Route path="employees/:employeeId" element={<EmployeeDetailPage />} />
         <Route path="members" element={<MembersPage />} />
         <Route path="hr-ops" element={<HrOpsPage />} />
@@ -119,12 +164,14 @@ export default function App() {
         <Route path="recruitment/interviews" element={<InterviewsPage />} />
         <Route path="recruitment/offers" element={<OffersPage />} />
         <Route path="recruitment/candidate-portal" element={<CandidatePortalPage />} />
+        <Route path="recruitment/tracking" element={<CandidateTrackingPage />} />
         <Route path="performance" element={<PerformancePage />} />
         <Route path="learning" element={<LearningPage />} />
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="benefits" element={<BenefitsPage />} />
         <Route path="surveys" element={<SurveysPage />} />
         <Route path="inbox" element={<InboxPage />} />
+        <Route path="progress" element={<ProgressPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="tracking" element={<TrackingPage />} />
         <Route path="certification" element={<CertificationPage />} />

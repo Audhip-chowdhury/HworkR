@@ -17,6 +17,11 @@ class RegisterRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8)
+
+
 class UserOut(BaseModel):
     id: str
     email: str

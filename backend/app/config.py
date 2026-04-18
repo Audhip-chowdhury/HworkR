@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     upload_dir: Path = Path("./uploads")
     max_upload_bytes: int = 2 * 1024 * 1024  # 2 MiB — company logos
+    max_employee_document_bytes: int = 5 * 1024 * 1024  # 5 MiB — ID / photo / offer PDF
+    # POST applicant pipeline updates; empty string disables (env: RECRUITMENT_STATUS_WEBHOOK_URL).
+    recruitment_status_webhook_url: str = "http://127.0.0.1:8020/recruitment/application-status"
+    # POST after HR creates an offer; same external stack as pipeline (port 8020). Empty disables.
+    recruitment_offer_webhook_url: str = "http://127.0.0.1:8020/recruitment/offers/inbound"
 
 
 settings = Settings()

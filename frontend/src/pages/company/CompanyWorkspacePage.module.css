@@ -505,6 +505,205 @@
   border-color: var(--color-primary);
 }
 
+/* Employees split layout (directory + detail) */
+.employeesSplit {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 1.4fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 1rem;
+}
+
+@media (max-width: 900px) {
+  .employeesSplit {
+    grid-template-columns: 1fr;
+  }
+}
+
+.employeesListPane {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: var(--bg-card);
+}
+
+.employeesDetailPane {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  background: var(--bg-card);
+}
+
+.employeesDetailTitle {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  color: var(--color-primary);
+}
+
+.employeesSection {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.employeesSection:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.employeesSectionHeading {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+
+.rowSelected {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+.docPreviewBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+}
+
+.docPreviewModal {
+  position: relative;
+  max-width: min(920px, 96vw);
+  max-height: min(90vh, 900px);
+  padding: 0.75rem;
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  cursor: default;
+}
+
+.docPreviewModal img {
+  display: block;
+  max-width: 100%;
+  max-height: min(82vh, 820px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.docPreviewClose {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.5rem;
+  padding: 0.2rem 0.55rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #666);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.docLink {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  cursor: pointer;
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.docLink:hover {
+  opacity: 0.88;
+}
+
+/* HR employee detail — onboarding checklist & lifecycle forms */
+.hrOnboardingRow {
+  margin-bottom: 0.55rem;
+}
+
+.hrOnboardingLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  cursor: pointer;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--text-primary, inherit);
+}
+
+.hrOnboardingCheckbox {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+.hrOnboardingLabel:has(.hrOnboardingCheckbox:disabled) {
+  cursor: wait;
+  opacity: 0.85;
+}
+
+.hrOnboardingCheckbox:disabled {
+  cursor: wait;
+}
+
+.textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  resize: vertical;
+  min-height: 3rem;
+}
+
+.hrLifecycleForm {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 520px;
+}
+
+/** Momentary highlight when landing from Inbox with ?focus= */
+.focusHighlight {
+  border-radius: 10px;
+  animation: focusHighlightFlash 2.4s ease-out forwards;
+}
+
+@keyframes focusHighlightFlash {
+  0% {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 4px;
+    background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  }
+  45% {
+    outline: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+    outline-offset: 4px;
+    background-color: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 4px;
+    background-color: transparent;
+  }
+}
+
 .modalBackdrop {
   position: fixed;
   inset: 0;
@@ -740,6 +939,21 @@
   cursor: default;
 }
 
+/* Manager team goals: filters + list + detail */
+.teamGoalsToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.teamGoalsToolbarField {
+  flex: 1 1 200px;
+  min-width: min(100%, 200px);
+  max-width: 22rem;
+}
+
 /* Manager team goals: list + detail */
 .teamGoalsSplit {
   display: grid;
@@ -837,4 +1051,119 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-card);
+}
+
+/* Peer review page (tabs + feedback cards) */
+.peerReviewIntro {
+  margin: 0 0 1.25rem;
+  max-width: 52rem;
+  line-height: 1.55;
+}
+
+.peerReviewTabBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.peerReviewTabBtn {
+  padding: 0.45rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.peerReviewTabBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.peerReviewTabBtnActive {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.peerReviewTabBtnActive:hover {
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.peerReviewFilterRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.peerReviewFilterInput {
+  flex: 1;
+  min-width: 200px;
+  max-width: 22rem;
+}
+
+.peerReviewFilterMeta {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.peerReviewFormStack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.peerReviewFormCard {
+  margin: 0;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-page);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.peerReviewFormCardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.peerReviewSubjectName {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.peerReviewCycleTag {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.peerReviewEmptyPanel {
+  padding: 2rem 1.25rem;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--bg-page);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.peerReviewSelfSection {
+  margin-top: 0.5rem;
 }

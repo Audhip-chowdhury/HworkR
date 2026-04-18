@@ -163,6 +163,7 @@ Step 3: Applicant Tracking Pipeline
   → Activity tracked: screening time, rejection reason quality,
      pipeline velocity, candidate communication timeliness
 //activity tracking , integration
+-> remove hired from queue
 Step 4: Interview Management
   HR schedules interviews (date, panel, format)
   → Collects feedback from "interviewers" (simulated or other users)

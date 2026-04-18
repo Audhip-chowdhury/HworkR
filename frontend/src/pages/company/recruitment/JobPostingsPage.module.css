@@ -1,0 +1,60 @@
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+  margin: 1rem 0 0.75rem;
+}
+
+.toolbarField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.toolbarField label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted, #5c6570);
+}
+
+.searchInput {
+  min-width: min(100%, 220px);
+  max-width: 320px;
+}
+
+.postedCell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.postedCheck {
+  width: 1.15rem;
+  height: 1.15rem;
+  cursor: pointer;
+  accent-color: var(--color-accent, #2563eb);
+}
+
+.postedCheck:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.postingRefInput {
+  min-width: 140px;
+  max-width: 220px;
+  font-size: 0.9rem;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #5c6570);
+  margin: 0 0 0.5rem;
+}
+
+.tableFootnote {
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #5c6570);
+  margin-top: 0.75rem;
+}

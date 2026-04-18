@@ -68,6 +68,60 @@ class ReviewCycleEmployeeGoalSubmission(Base):
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ReviewCyclePeerNomination(Base):
+    """Employee chose up to 3 works-with peers to request a peer review for this cycle (one row per requester per cycle)."""
+
+    __tablename__ = "review_cycle_peer_nominations"
+    __table_args__ = (
+        UniqueConstraint("review_cycle_id", "requester_employee_id", name="uq_rc_peer_nomination_requester"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    company_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"), index=True
+    )
+    review_cycle_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("review_cycles.id", ondelete="CASCADE"), index=True
+    )
+    requester_employee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("employees.id", ondelete="CASCADE"), index=True
+    )
+    reviewer_employee_ids_json: Mapped[list[Any]] = mapped_column(JSON, nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PeerReviewFeedback(Base):
+    """Written peer feedback from one employee about another for a review cycle (one row per reviewer/subject/cycle)."""
+
+    __tablename__ = "peer_review_feedbacks"
+    __table_args__ = (
+        UniqueConstraint(
+            "review_cycle_id",
+            "reviewer_employee_id",
+            "subject_employee_id",
+            name="uq_peer_feedback_cycle_reviewer_subject",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    company_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"), index=True
+    )
+    review_cycle_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("review_cycles.id", ondelete="CASCADE"), index=True
+    )
+    reviewer_employee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("employees.id", ondelete="CASCADE"), index=True
+    )
+    subject_employee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("employees.id", ondelete="CASCADE"), index=True
+    )
+    strengths: Mapped[str] = mapped_column(Text, nullable=False)
+    improvements: Mapped[str] = mapped_column(Text, nullable=False)
+    additional_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Goal(Base):
     __tablename__ = "goals"
     __table_args__ = (UniqueConstraint("employee_id", "kpi_definition_id", name="uq_goal_employee_kpi_definition"),)

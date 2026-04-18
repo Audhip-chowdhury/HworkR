@@ -3,7 +3,7 @@ import { Navigate, useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { useAuth } from '../../../auth/AuthContext'
 import { listMyDirectReports, type Employee } from '../../../api/employeesApi'
-import { listGoals, updateGoal, type Goal } from '../../../api/performanceLearningApi'
+import { listGoals, listReviewCycles, updateGoal, type Goal, type ReviewCycle } from '../../../api/performanceLearningApi'
 import styles from '../CompanyWorkspacePage.module.css'
 
 function displayName(emp: Employee): string {
@@ -30,6 +30,27 @@ function isReviewComplete(dr: Draft): boolean {
   return dr.comment.trim().length > 0
 }
 
+/** Saved server state: manager has submitted rating + comment for this goal. */
+function goalHasSavedManagerReview(g: Goal): boolean {
+  if (g.manager_rating == null) return false
+  const n = Number(g.manager_rating)
+  if (!Number.isInteger(n) || n < 1 || n > 5) return false
+  return (g.manager_comment ?? '').trim().length > 0
+}
+
+/**
+ * True when this employee has at least one goal in the cycle bucket and every such goal has a saved manager review.
+ * `optionValue` is a cycle id, or `__none__` for goals with no cycle.
+ */
+function cycleFullySubmittedForEmployee(optionValue: string, goals: Goal[]): boolean {
+  const inScope =
+    optionValue === '__none__'
+      ? goals.filter((g) => !g.cycle_id)
+      : goals.filter((g) => g.cycle_id === optionValue)
+  if (inScope.length === 0) return false
+  return inScope.every((g) => goalHasSavedManagerReview(g))
+}
+
 function listTitle(g: Goal): string {
   const t = g.title.trim()
   if (t.length <= 72) return t
@@ -44,6 +65,8 @@ export function ManagerTeamGoalsPage() {
 
   const [reports, setReports] = useState<Employee[]>([])
   const [selectedReportId, setSelectedReportId] = useState('')
+  const [reviewCycles, setReviewCycles] = useState<ReviewCycle[]>([])
+  const [cycleFilterId, setCycleFilterId] = useState('')
   const [goals, setGoals] = useState<Goal[]>([])
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [activeGoalId, setActiveGoalId] = useState('')
@@ -73,6 +96,24 @@ export function ManagerTeamGoalsPage() {
   useEffect(() => {
     void loadReports()
   }, [loadReports])
+
+  const loadReviewCycles = useCallback(async () => {
+    if (!companyId || !canManageTeamGoals) return
+    try {
+      const list = await listReviewCycles(companyId)
+      setReviewCycles(list)
+    } catch {
+      setReviewCycles([])
+    }
+  }, [companyId, canManageTeamGoals])
+
+  useEffect(() => {
+    void loadReviewCycles()
+  }, [loadReviewCycles])
+
+  useEffect(() => {
+    setCycleFilterId('')
+  }, [selectedReportId])
 
   const refreshGoals = useCallback(async () => {
     if (!companyId || !selectedReportId) {
@@ -110,48 +151,102 @@ export function ManagerTeamGoalsPage() {
     void refreshGoals()
   }, [refreshGoals])
 
-  useEffect(() => {
-    if (goals.length === 0) {
-      setActiveGoalId('')
-      return
-    }
-    setActiveGoalId((prev) => (prev && goals.some((g) => g.id === prev) ? prev : goals[0].id))
-  }, [goals])
-
   const selectedReport = useMemo(
     () => reports.find((r) => r.id === selectedReportId),
     [reports, selectedReportId],
   )
 
+  const cycleTitleById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const c of reviewCycles) m.set(c.id, c.name)
+    return m
+  }, [reviewCycles])
+
+  const cycleFilterOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [{ value: '', label: 'All cycles' }]
+    const sorted = [...reviewCycles].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    for (const c of sorted) {
+      opts.push({ value: c.id, label: c.name })
+    }
+    const known = new Set(reviewCycles.map((c) => c.id))
+    const orphanIds = new Set<string>()
+    for (const g of goals) {
+      if (g.cycle_id && !known.has(g.cycle_id)) orphanIds.add(g.cycle_id)
+    }
+    const orphanSorted = [...orphanIds].sort()
+    orphanSorted.forEach((id, idx) => {
+      opts.push({
+        value: id,
+        label: orphanSorted.length > 1 ? `Review cycle (legacy ${idx + 1})` : 'Review cycle (legacy)',
+      })
+    })
+    if (goals.some((g) => !g.cycle_id)) {
+      opts.push({ value: '__none__', label: 'No review cycle' })
+    }
+    return opts.filter((o) => {
+      if (o.value === '') return true
+      return !cycleFullySubmittedForEmployee(o.value, goals)
+    })
+  }, [reviewCycles, goals])
+
+  useEffect(() => {
+    const allowed = new Set(cycleFilterOptions.map((o) => o.value))
+    if (cycleFilterId && !allowed.has(cycleFilterId)) {
+      setCycleFilterId('')
+    }
+  }, [cycleFilterOptions, cycleFilterId])
+
+  const filteredGoals = useMemo(() => {
+    if (!cycleFilterId) return goals
+    if (cycleFilterId === '__none__') return goals.filter((g) => !g.cycle_id)
+    return goals.filter((g) => g.cycle_id === cycleFilterId)
+  }, [goals, cycleFilterId])
+
+  const goalCycleLabel = useCallback(
+    (cycleId: string | null) => {
+      if (!cycleId) return 'No review cycle'
+      return cycleTitleById.get(cycleId) ?? 'Review cycle'
+    },
+    [cycleTitleById],
+  )
+
+  useEffect(() => {
+    if (filteredGoals.length === 0) {
+      setActiveGoalId('')
+      return
+    }
+    setActiveGoalId((prev) => (prev && filteredGoals.some((g) => g.id === prev) ? prev : filteredGoals[0].id))
+  }, [filteredGoals])
+
   const activeGoal = useMemo(
-    () => goals.find((g) => g.id === activeGoalId) ?? null,
-    [goals, activeGoalId],
+    () => filteredGoals.find((g) => g.id === activeGoalId) ?? null,
+    [filteredGoals, activeGoalId],
   )
 
   const hasUnsavedChanges = useMemo(() => {
-    for (const g of goals) {
+    for (const g of filteredGoals) {
       const dr = drafts[g.id] ?? goalDraft(g)
       const ratingMatch = dr.rating === (g.manager_rating != null ? String(g.manager_rating) : '')
       const commentMatch = (dr.comment ?? '') === (g.manager_comment ?? '')
       if (!ratingMatch || !commentMatch) return true
     }
     return false
-  }, [goals, drafts])
+  }, [filteredGoals, drafts])
 
   const completedCount = useMemo(() => {
     let n = 0
-    for (const g of goals) {
+    for (const g of filteredGoals) {
       const dr = drafts[g.id] ?? goalDraft(g)
       if (isReviewComplete(dr)) n += 1
     }
     return n
-  }, [goals, drafts])
+  }, [filteredGoals, drafts])
 
-  const allGoalsReady = goals.length > 0 && completedCount === goals.length
+  const allGoalsReady = filteredGoals.length > 0 && completedCount === filteredGoals.length
 
   async function submitAllReviews() {
-    if (!companyId || goals.length === 0) return
-    for (const g of goals) {
+    if (!companyId || filteredGoals.length === 0) return
+    for (const g of filteredGoals) {
       const dr = drafts[g.id] ?? goalDraft(g)
       if (!isReviewComplete(dr)) {
         toast.error('Add a rating (1–5) and a comment for every goal before submitting.')
@@ -159,7 +254,7 @@ export function ManagerTeamGoalsPage() {
       }
     }
     const payloads: Array<{ goalId: string; manager_rating: number | null; manager_comment: string | null }> = []
-    for (const g of goals) {
+    for (const g of filteredGoals) {
       const dr = drafts[g.id] ?? goalDraft(g)
       const ratingRaw = dr.rating.trim()
       const n = Number(ratingRaw)
@@ -228,20 +323,21 @@ export function ManagerTeamGoalsPage() {
       <section className={styles.card}>
         <h3 className={styles.h3}>Team goals review</h3>
         <p className={styles.muted}>
-          Pick a team member, then select each goal on the left to add a rating and comment on the right. When every goal
-          has a rating and comment, click <strong>Submit review</strong> to save all at once.
+          Pick a team member and optionally a <strong>review cycle</strong> to focus the list. Then select each goal on
+          the left to add a rating and comment on the right. When every goal in the current view has a rating and comment,
+          click <strong>Submit review</strong> to save all at once.
         </p>
         {error ? <p className={styles.error}>{error}</p> : null}
 
-        <div className={styles.inline} style={{ marginBottom: '1rem' }}>
-          <label className={styles.labelBlock} style={{ marginBottom: 0 }}>
+        <div className={styles.teamGoalsToolbar}>
+          <label className={`${styles.labelBlock} ${styles.teamGoalsToolbarField}`} style={{ marginBottom: 0 }}>
             Team member
             <select
               className={styles.input}
-              style={{ minWidth: 220 }}
               value={selectedReportId}
               disabled={loadingReports || reports.length === 0}
               onChange={(e) => setSelectedReportId(e.target.value)}
+              aria-label="Team member"
             >
               {!loadingReports && reports.length === 0 ? (
                 <option value="">No direct reports</option>
@@ -254,6 +350,22 @@ export function ManagerTeamGoalsPage() {
               )}
             </select>
           </label>
+          <label className={`${styles.labelBlock} ${styles.teamGoalsToolbarField}`} style={{ marginBottom: 0 }}>
+            Review cycle
+            <select
+              className={styles.input}
+              value={cycleFilterId}
+              disabled={loadingGoals || !selectedReportId || goals.length === 0}
+              onChange={(e) => setCycleFilterId(e.target.value)}
+              aria-label="Filter goals by review cycle title"
+            >
+              {cycleFilterOptions.map((o) => (
+                <option key={o.value || 'all'} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {loadingReports ? <p className={styles.muted}>Loading team…</p> : null}
@@ -264,7 +376,8 @@ export function ManagerTeamGoalsPage() {
             {goals.length > 0 ? (
               <>
                 {' '}
-                · {completedCount}/{goals.length} goals reviewed
+                · {completedCount}/{filteredGoals.length} reviewed in this view
+                {cycleFilterId ? ` (${goals.length} total)` : ''}
               </>
             ) : null}
           </p>
@@ -272,7 +385,7 @@ export function ManagerTeamGoalsPage() {
 
         {loadingGoals ? <p className={styles.muted}>Loading goals…</p> : null}
 
-        {!loadingGoals && selectedReportId && goals.length > 0 ? (
+        {!loadingGoals && selectedReportId && goals.length > 0 && filteredGoals.length > 0 ? (
           <div className={styles.teamGoalsSplit}>
             <div className={styles.teamGoalsMobilePicker}>
               <label className={styles.labelBlock} style={{ marginBottom: 0 }}>
@@ -283,7 +396,7 @@ export function ManagerTeamGoalsPage() {
                   onChange={(e) => setActiveGoalId(e.target.value)}
                   aria-label="Select goal to review"
                 >
-                  {goals.map((g) => {
+                  {filteredGoals.map((g) => {
                     const dr = drafts[g.id] ?? goalDraft(g)
                     const complete = isReviewComplete(dr)
                     return (
@@ -297,7 +410,7 @@ export function ManagerTeamGoalsPage() {
               </label>
             </div>
             <nav className={styles.teamGoalsList} aria-label="Goals for this employee">
-              {goals.map((g) => {
+              {filteredGoals.map((g) => {
                 const dr = drafts[g.id] ?? goalDraft(g)
                 const complete = isReviewComplete(dr)
                 const isActive = g.id === activeGoalId
@@ -311,7 +424,7 @@ export function ManagerTeamGoalsPage() {
                     {listTitle(g)}
                     <span className={styles.teamGoalsListMeta}>
                       {complete ? 'Ready' : 'Needs review'}
-                      {g.cycle_id ? ` · cycle ${g.cycle_id.slice(0, 8)}` : ''}
+                      {` · ${goalCycleLabel(g.cycle_id)}`}
                     </span>
                   </button>
                 )
@@ -322,7 +435,8 @@ export function ManagerTeamGoalsPage() {
               {activeGoal && activeDr ? (
                 <div className={styles.teamGoalsDetailCard}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                    {activeGoal.cycle_id ? `Cycle ${activeGoal.cycle_id.slice(0, 8)}… · ` : ''}
+                    <strong style={{ color: 'var(--text-primary)' }}>{goalCycleLabel(activeGoal.cycle_id)}</strong>
+                    {' · '}
                     Status {activeGoal.status} · Progress {activeGoal.progress}%
                   </div>
                   <h4 className={styles.h4} style={{ marginTop: 0 }}>
@@ -411,6 +525,12 @@ export function ManagerTeamGoalsPage() {
 
         {!loadingGoals && selectedReportId && goals.length === 0 && reports.length > 0 ? (
           <p className={styles.muted}>No goals on file for this employee yet.</p>
+        ) : null}
+
+        {!loadingGoals && selectedReportId && goals.length > 0 && filteredGoals.length === 0 ? (
+          <p className={styles.muted}>
+            No goals match this review cycle. Choose <strong>All cycles</strong> or another cycle title.
+          </p>
         ) : null}
       </section>
     </div>

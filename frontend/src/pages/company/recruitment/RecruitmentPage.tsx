@@ -81,7 +81,7 @@ export function RecruitmentPage() {
 
   async function submitForApproval(req: Requisition) {
     if (!companyId || !canSubmit) return
-    if (!confirm(`Submit requisition ${req.id.slice(0, 8)}… for approval?`)) return
+    if (!confirm(`Submit requisition ${req.req_code ?? req.id.slice(0, 8)} for approval?`)) return
     setPending(true)
     try {
       await recruitmentApi.patchRequisition(companyId, req.id, { status: 'submitted' })
@@ -132,6 +132,7 @@ export function RecruitmentPage() {
         <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/interviews`}>Interviews</Link>
         <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/offers`}>Offers</Link>
         <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/candidate-portal`}>Candidate portal</Link>
+        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/tracking`}>Tracking</Link>
       </div>
       <section className={styles.card}>
         <h3 className={styles.h3}>Requisitions</h3>
@@ -261,7 +262,7 @@ export function RecruitmentPage() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>ID</th>
+                <th>Req ID</th>
                 <th>Status</th>
                 <th>Headcount</th>
                 <th>Skills</th>
@@ -278,7 +279,9 @@ export function RecruitmentPage() {
                 const cells = formatCriteriaCells(r.hiring_criteria)
                 return (
                 <tr key={r.id}>
-                  <td className={styles.muted}>{r.id.slice(0, 8)}…</td>
+                  <td className={styles.muted} title={r.id}>
+                    {r.req_code ?? '—'}
+                  </td>
                   <td>{r.status}</td>
                   <td>{r.headcount}</td>
                   <td className={styles.muted}>{cells.skills}</td>
