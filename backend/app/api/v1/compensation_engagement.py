@@ -2,6 +2,7 @@ from datetime import date, datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from pydantic import ValidationError
 from collections import defaultdict
 
 from sqlalchemy import func, or_, select
@@ -29,6 +30,7 @@ from app.models.compensation_engagement import (
 from app.models.employee import Employee
 from app.models.membership import CompanyMembership
 from app.models.org import Department
+from app.models.position import Position
 from app.models.user import User
 from app.schemas.compensation_engagement import (
     BenefitsEnrollmentCreate,
@@ -110,6 +112,58 @@ _PAYROLL_PAYSLIP_EDIT = frozenset({"company_admin", "compensation_analytics", "h
 PAYROLL_STATUS_TO_BE_PROCESSED = "to_be_processed"
 PAYROLL_STATUS_PAYSLIP_GENERATED = "payslip_generated"
 PAYROLL_STATUS_SALARY_RELEASED = "salary_released"
+
+
+def _department_in_company(db: Session, company_id: str, department_id: str) -> bool:
+    r = db.execute(
+        select(Department).where(Department.id == department_id, Department.company_id == company_id)
+    ).scalar_one_or_none()
+    return r is not None
+
+
+def _employee_position_grade(db: Session, company_id: str, emp: Employee) -> int | None:
+    if not emp.position_id:
+        return None
+    pos = db.execute(
+        select(Position).where(Position.id == emp.position_id, Position.company_id == company_id)
+    ).scalar_one_or_none()
+    return pos.grade if pos else None
+
+
+def _employee_sees_action_plan(db: Session, company_id: str, emp: Employee, plan: SurveyActionPlan) -> bool:
+    """Employees only see plans owned by their department and matching participant scope."""
+    if not plan.owner_department_id or not emp.department_id:
+        return False
+    if emp.department_id != plan.owner_department_id:
+        return False
+    scope = (plan.participant_scope or "all").strip()
+    fj = plan.participant_filter_json or {}
+    if scope == "all":
+        return True
+    if scope == "department":
+        ids = fj.get("department_ids") or []
+        return emp.department_id in ids
+    if scope == "grade":
+        grades = fj.get("grades") or []
+        g = _employee_position_grade(db, company_id, emp)
+        return g is not None and g in grades
+    if scope == "individual":
+        eids = fj.get("employee_ids") or []
+        return emp.id in eids
+    return False
+
+
+def _validate_action_plan_participant_refs(db: Session, company_id: str, body: SurveyActionPlanCreate) -> None:
+    fj = body.participant_filter_json or {}
+    scope = body.participant_scope
+    if scope == "department":
+        for did in fj.get("department_ids") or []:
+            if not _department_in_company(db, company_id, did):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Department not found: {did}")
+    elif scope == "individual":
+        for eid in fj.get("employee_ids") or []:
+            if get_employee_by_id(db, company_id, eid) is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Employee not found: {eid}")
 
 
 def _parse_survey_calendar_date(s: str | None) -> date | None:
@@ -1727,8 +1781,11 @@ def create_survey_action_plan(
     s = db.execute(select(Survey).where(Survey.id == survey_id, Survey.company_id == company_id)).scalar_one_or_none()
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Survey not found")
+    if not _department_in_company(db, company_id, body.owner_department_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Owner department not found")
     if body.assignee_employee_id and get_employee_by_id(db, company_id, body.assignee_employee_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignee employee not found")
+    _validate_action_plan_participant_refs(db, company_id, body)
     row = SurveyActionPlan(
         id=uuid_str(),
         survey_id=survey_id,
@@ -1736,6 +1793,9 @@ def create_survey_action_plan(
         title=body.title.strip(),
         description=body.description,
         assignee_employee_id=body.assignee_employee_id,
+        owner_department_id=body.owner_department_id,
+        participant_scope=body.participant_scope,
+        participant_filter_json=body.participant_filter_json,
         due_date=body.due_date,
         status=body.status or "open",
         created_by=user.id,
@@ -1759,9 +1819,10 @@ def create_survey_action_plan(
 def list_survey_action_plans(
     company_id: str,
     survey_id: str,
-    _: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
     db: Annotated[Session, Depends(get_db)],
 ) -> list[SurveyActionPlan]:
+    user, membership = ctx
     s = db.execute(select(Survey).where(Survey.id == survey_id, Survey.company_id == company_id)).scalar_one_or_none()
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Survey not found")
@@ -1770,7 +1831,37 @@ def list_survey_action_plans(
         .where(SurveyActionPlan.survey_id == survey_id, SurveyActionPlan.company_id == company_id)
         .order_by(SurveyActionPlan.created_at.desc())
     )
-    return list(r.scalars().all())
+    rows = list(r.scalars().all())
+    if membership.role == "employee":
+        emp = get_employee_for_user(db, company_id, user.id)
+        if emp is None:
+            return []
+        return [p for p in rows if _employee_sees_action_plan(db, company_id, emp, p)]
+    return rows
+
+
+@router.get("/engagement/my-action-plans", response_model=list[SurveyActionPlanOut])
+def list_my_survey_action_plans(
+    company_id: str,
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[SurveyActionPlan]:
+    user, membership = ctx
+    if membership.role != "employee":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is only for users with the employee role",
+        )
+    emp = get_employee_for_user(db, company_id, user.id)
+    if emp is None:
+        return []
+    r = db.execute(
+        select(SurveyActionPlan)
+        .where(SurveyActionPlan.company_id == company_id)
+        .order_by(SurveyActionPlan.created_at.desc())
+    )
+    rows = list(r.scalars().all())
+    return [p for p in rows if _employee_sees_action_plan(db, company_id, emp, p)]
 
 
 @router.patch("/engagement/action-plans/{action_plan_id}", response_model=SurveyActionPlanOut)
@@ -1791,7 +1882,15 @@ def update_survey_action_plan(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
     if membership.role == "hr_ops":
-        if body.title is not None or body.description is not None or body.assignee_employee_id is not None or body.due_date is not None:
+        if (
+            body.title is not None
+            or body.description is not None
+            or body.assignee_employee_id is not None
+            or body.due_date is not None
+            or body.owner_department_id is not None
+            or body.participant_scope is not None
+            or body.participant_filter_json is not None
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="HR Ops may only update action plan status",
@@ -1816,6 +1915,32 @@ def update_survey_action_plan(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignee employee not found")
         changes["assignee_employee_id"] = {"old": row.assignee_employee_id, "new": body.assignee_employee_id}
         row.assignee_employee_id = body.assignee_employee_id or None
+    if body.owner_department_id is not None:
+        if body.owner_department_id and not _department_in_company(db, company_id, body.owner_department_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Owner department not found")
+        changes["owner_department_id"] = {"old": row.owner_department_id, "new": body.owner_department_id}
+        row.owner_department_id = body.owner_department_id or None
+    if body.participant_scope is not None:
+        changes["participant_scope"] = {"old": row.participant_scope, "new": body.participant_scope}
+        row.participant_scope = body.participant_scope
+    if body.participant_filter_json is not None:
+        changes["participant_filter_json"] = True
+        row.participant_filter_json = body.participant_filter_json
+    if membership.role != "hr_ops" and row.owner_department_id:
+        try:
+            merged_create = SurveyActionPlanCreate(
+                title=row.title,
+                description=row.description,
+                assignee_employee_id=row.assignee_employee_id,
+                owner_department_id=row.owner_department_id,
+                participant_scope=row.participant_scope,  # type: ignore[arg-type]
+                participant_filter_json=row.participant_filter_json,
+                due_date=row.due_date,
+                status=row.status,
+            )
+        except ValidationError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.errors()) from e
+        _validate_action_plan_participant_refs(db, company_id, merged_create)
     write_audit(
         db,
         company_id=company_id,

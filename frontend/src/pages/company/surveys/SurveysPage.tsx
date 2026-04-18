@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../../auth/AuthContext'
 import {
   createActionPlan,
@@ -7,20 +7,24 @@ import {
   createSurveyResponse,
   deleteSurvey,
   listActionPlans,
+  listMyActionPlans,
   listSurveyResponses,
   listSurveys,
   listSurveyTemplates,
   updateActionPlan,
   updateSurvey,
+  type ParticipantScope,
   type Survey,
   type SurveyActionPlan,
   type SurveyResponse,
   type SurveyTemplate,
 } from '../../../api/compensationApi'
 import { getMyEmployee, listEmployees, type Employee } from '../../../api/employeesApi'
+import { listDepartments, listPositions, type Department } from '../../../api/organizationApi'
 import styles from '../CompanyWorkspacePage.module.css'
+import sv from './SurveysPage.module.css'
 
-type MainTab = 'surveys' | 'responses' | 'actionPlans' | 'trends'
+type SurveyTab = 'surveys' | 'responses' | 'plans' | 'trends' | 'my'
 
 type QType = 'rating_1_5' | 'yes_no' | 'text'
 
@@ -80,17 +84,105 @@ function responseCountForSurvey(surveyId: string, responses: SurveyResponse[]): 
   return responses.filter((r) => r.survey_id === surveyId).length
 }
 
+function initialsFromLabel(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  if (parts.length === 1 && parts[0].length >= 2) return parts[0].slice(0, 2).toUpperCase()
+  return name.slice(0, 2).toUpperCase() || '?'
+}
+
+function templateDescription(t: SurveyTemplate): string {
+  const n = t.questions.length
+  const kind = t.survey_type === 'standard' ? 'Standard engagement' : 'Quick pulse'
+  return `${kind} · ${n} question${n === 1 ? '' : 's'} — click to load into the composer`
+}
+
+function participantSummary(
+  p: SurveyActionPlan,
+  departments: { id: string; name: string }[],
+  employees: Employee[],
+): string {
+  const scope = (p.participant_scope || 'all') as string
+  const fj = p.participant_filter_json
+  if (scope === 'all') return 'Participants: all (in owning department)'
+  if (scope === 'department') {
+    const ids = (fj?.department_ids as string[] | undefined) ?? []
+    const names = ids.map((id) => departments.find((d) => d.id === id)?.name ?? id.slice(0, 8))
+    return `Participants: departments — ${names.join(', ') || '—'}`
+  }
+  if (scope === 'grade') {
+    const grades = (fj?.grades as number[] | undefined) ?? []
+    return `Participants: org grades — ${grades.join(', ') || '—'}`
+  }
+  if (scope === 'individual') {
+    const eids = (fj?.employee_ids as string[] | undefined) ?? []
+    const names = eids.map((id) => {
+      const e = employees.find((x) => x.id === id)
+      return e ? employeeLabel(e) : id.slice(0, 8)
+    })
+    return `Participants: individuals — ${names.join(', ') || '—'}`
+  }
+  return 'Participants: —'
+}
+
 export function SurveysPage() {
   const { companyId = '' } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { myCompanies } = useAuth()
   const role = myCompanies.find((c) => c.company.id === companyId)?.membership.role ?? ''
   const canManage = role === 'company_admin' || role === 'compensation_analytics' || role === 'hr_ops'
   const isHrOps = role === 'hr_ops'
   const isEmployee = role === 'employee'
   const canViewAllResponses = canManage
-  const showAllTabs = !isEmployee
+  const showHrTabs = !isEmployee
 
-  const [mainTab, setMainTab] = useState<MainTab>(isEmployee ? 'surveys' : 'surveys')
+  const mergeSurveyParams = useCallback(
+    (mutate: (n: URLSearchParams) => void, opts?: { replace?: boolean }) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev)
+          mutate(n)
+          return n
+        },
+        { replace: opts?.replace ?? true },
+      )
+    },
+    [setSearchParams],
+  )
+
+  const tab: SurveyTab = useMemo(() => {
+    const t = searchParams.get('tab')
+    if (isEmployee) {
+      if (t === 'surveys' || t === 'my' || t === 'plans') return t
+      return 'my'
+    }
+    if (t === 'surveys' || t === 'responses' || t === 'plans' || t === 'trends') return t
+    return 'surveys'
+  }, [searchParams, isEmployee])
+
+  useEffect(() => {
+    if (searchParams.get('tab')) return
+    mergeSurveyParams((n) => {
+      n.set('tab', isEmployee ? 'my' : 'surveys')
+    })
+  }, [searchParams, isEmployee, mergeSurveyParams])
+
+  useEffect(() => {
+    if (!isEmployee) return
+    const t = searchParams.get('tab')
+    if (t === 'responses' || t === 'trends') {
+      mergeSurveyParams((n) => n.set('tab', 'surveys'))
+    }
+  }, [isEmployee, searchParams, mergeSurveyParams])
+
+  useEffect(() => {
+    if (isEmployee) return
+    if (searchParams.get('tab') === 'my') {
+      mergeSurveyParams((n) => n.set('tab', 'surveys'))
+    }
+  }, [isEmployee, searchParams, mergeSurveyParams])
+
+  const [showCreateSurvey, setShowCreateSurvey] = useState(false)
   const [surveys, setSurveys] = useState<Survey[]>([])
   const [responses, setResponses] = useState<SurveyResponse[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -125,9 +217,16 @@ export function SurveysPage() {
   const [actionPlans, setActionPlans] = useState<SurveyActionPlan[]>([])
   const [planTitle, setPlanTitle] = useState('')
   const [planDescription, setPlanDescription] = useState('')
-  const [planAssigneeId, setPlanAssigneeId] = useState('')
   const [planDue, setPlanDue] = useState('')
   const [planStatus, setPlanStatus] = useState('open')
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [positionGrades, setPositionGrades] = useState<number[]>([])
+  const [planOwnerDeptId, setPlanOwnerDeptId] = useState('')
+  const [planParticipantScope, setPlanParticipantScope] = useState<ParticipantScope>('all')
+  const [planFilterDeptIds, setPlanFilterDeptIds] = useState<string[]>([])
+  const [planFilterGrades, setPlanFilterGrades] = useState<number[]>([])
+  const [planFilterEmployeeIds, setPlanFilterEmployeeIds] = useState<string[]>([])
+  const [myActionPlans, setMyActionPlans] = useState<SurveyActionPlan[]>([])
 
   /* Employee respond */
   const [respondSurveyId, setRespondSurveyId] = useState<string | null>(null)
@@ -138,6 +237,17 @@ export function SurveysPage() {
 
   const [surveyTemplates, setSurveyTemplates] = useState<SurveyTemplate[]>([])
   const [deleteSurveyId, setDeleteSurveyId] = useState<string | null>(null)
+
+  const gotoSurveyTab = useCallback(
+    (next: SurveyTab, opts?: { surveyIdForAnalysis?: string; surveyIdForPlans?: string }) => {
+      if (opts?.surveyIdForAnalysis) setAnalysisSurveyId(opts.surveyIdForAnalysis)
+      if (opts?.surveyIdForPlans) setPlanSurveyId(opts.surveyIdForPlans)
+      mergeSurveyParams((n) => {
+        n.set('tab', next)
+      })
+    },
+    [mergeSurveyParams],
+  )
 
   const refresh = useCallback(async () => {
     if (!companyId) return
@@ -209,7 +319,78 @@ export function SurveysPage() {
     return () => {
       cancelled = true
     }
-  }, [companyId, planSurveyId, canManage, isHrOps, mainTab])
+  }, [companyId, planSurveyId, canManage, isHrOps, tab])
+
+  useEffect(() => {
+    if (!companyId || (!showHrTabs && !(isEmployee && tab === 'plans'))) return
+    let cancelled = false
+    void listDepartments(companyId)
+      .then((rows) => {
+        if (!cancelled) setDepartments(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setDepartments([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, showHrTabs, isEmployee, tab])
+
+  useEffect(() => {
+    if (!companyId || !showHrTabs || tab !== 'plans') return
+    let cancelled = false
+    void listPositions(companyId)
+      .then((pos) => {
+        if (!cancelled) {
+          const g = [...new Set(pos.map((p) => p.grade))].sort((a, b) => a - b)
+          setPositionGrades(g)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPositionGrades([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, showHrTabs, tab])
+
+  useEffect(() => {
+    if (departments.length === 0) return
+    setPlanOwnerDeptId((prev) => prev || departments[0].id)
+  }, [departments])
+
+  useEffect(() => {
+    if (!companyId || !isEmployee || tab !== 'plans') {
+      setMyActionPlans([])
+      return
+    }
+    let cancelled = false
+    void listMyActionPlans(companyId)
+      .then((rows) => {
+        if (!cancelled) setMyActionPlans(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setMyActionPlans([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, isEmployee, tab])
+
+  useEffect(() => {
+    if (!companyId || !isEmployee || tab !== 'plans') return
+    let cancelled = false
+    void listEmployees(companyId)
+      .then((em) => {
+        if (!cancelled) setEmployees(em)
+      })
+      .catch(() => {
+        if (!cancelled) setEmployees([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, isEmployee, tab])
 
   useEffect(() => {
     if (surveys.length && !analysisSurveyId) setAnalysisSurveyId(surveys[0].id)
@@ -262,6 +443,18 @@ export function SurveysPage() {
     })
   }, [analysisQuestions, analysisResponses])
 
+  const avgOverallRating = useMemo(() => {
+    const ratings = questionStats.filter((r) => r.kind === 'rating' && (r.avg ?? 0) > 0)
+    if (!ratings.length) return null
+    return ratings.reduce((a, x) => a + (x.kind === 'rating' ? x.avg : 0), 0) / ratings.length
+  }, [questionStats])
+
+  const responseRateTier = useMemo(() => {
+    if (responseRatePct >= 70) return 'good' as const
+    if (responseRatePct >= 40) return 'warn' as const
+    return 'bad' as const
+  }, [responseRatePct])
+
   const trendData = useMemo(() => {
     const rows: { surveyId: string; title: string; label: string; avg: number; qid: string }[] = []
     const targetSurveys = surveys.filter((s) => s.status === 'active' || s.status === 'closed')
@@ -308,6 +501,24 @@ export function SurveysPage() {
     return opts
   }, [surveys])
 
+  const actionPlansByStatus = useMemo(() => {
+    return {
+      open: actionPlans.filter((p) => p.status === 'open'),
+      in_progress: actionPlans.filter((p) => p.status === 'in_progress'),
+      done: actionPlans.filter((p) => p.status === 'done'),
+    }
+  }, [actionPlans])
+
+  const myActionPlansBySurvey = useMemo(() => {
+    const m = new Map<string, SurveyActionPlan[]>()
+    for (const p of myActionPlans) {
+      const arr = m.get(p.survey_id) ?? []
+      arr.push(p)
+      m.set(p.survey_id, arr)
+    }
+    return m
+  }, [myActionPlans])
+
   async function onCreateSurvey(e: FormEvent) {
     e.preventDefault()
     if (!companyId || !canManage) return
@@ -326,6 +537,7 @@ export function SurveysPage() {
       setNewStart('')
       setNewEnd('')
       setNewQuestions([{ id: genQuestionId(), text: '', type: 'rating_1_5', required: true }])
+      setShowCreateSurvey(false)
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create survey')
@@ -399,6 +611,7 @@ export function SurveysPage() {
   }
 
   function applySurveyTemplate(t: SurveyTemplate) {
+    setShowCreateSurvey(true)
     setNewTitle(t.title)
     setNewSurveyType(t.survey_type === 'standard' ? 'standard' : 'pulse')
     setNewQuestions(
@@ -428,22 +641,47 @@ export function SurveysPage() {
 
   async function onCreateActionPlan(e: FormEvent) {
     e.preventDefault()
-    if (!companyId || !canManage || !planSurveyId) return
+    if (!companyId || !canManage || !planSurveyId || !planOwnerDeptId) return
+    if (planParticipantScope === 'department' && planFilterDeptIds.length === 0) {
+      setError('Select at least one department for participant scope, or choose All.')
+      return
+    }
+    if (planParticipantScope === 'grade' && planFilterGrades.length === 0) {
+      setError('Select at least one org grade for participant scope, or choose All.')
+      return
+    }
+    if (planParticipantScope === 'individual' && planFilterEmployeeIds.length === 0) {
+      setError('Select at least one employee for participant scope, or choose All.')
+      return
+    }
     setPending(true)
     setError(null)
     try {
+      let participant_filter_json: Record<string, unknown> | null = null
+      if (planParticipantScope === 'department') {
+        participant_filter_json = { department_ids: planFilterDeptIds }
+      } else if (planParticipantScope === 'grade') {
+        participant_filter_json = { grades: planFilterGrades }
+      } else if (planParticipantScope === 'individual') {
+        participant_filter_json = { employee_ids: planFilterEmployeeIds }
+      }
       await createActionPlan(companyId, planSurveyId, {
         title: planTitle.trim(),
         description: planDescription.trim() || null,
-        assignee_employee_id: planAssigneeId || null,
+        owner_department_id: planOwnerDeptId,
+        participant_scope: planParticipantScope,
+        participant_filter_json,
         due_date: planDue.trim() || null,
         status: planStatus,
       })
       setPlanTitle('')
       setPlanDescription('')
-      setPlanAssigneeId('')
       setPlanDue('')
       setPlanStatus('open')
+      setPlanParticipantScope('all')
+      setPlanFilterDeptIds([])
+      setPlanFilterGrades([])
+      setPlanFilterEmployeeIds([])
       const rows = await listActionPlans(companyId, planSurveyId)
       setActionPlans(rows)
       await refresh()
@@ -520,93 +758,135 @@ export function SurveysPage() {
     }
   }
 
-  return (
-    <div className={styles.org}>
-      <p className={styles.flowHint}>
-        <strong>Engagement &amp; Surveys</strong> — create pulse surveys, collect structured responses, analyze results, define
-        action plans, and track satisfaction (rating questions) over time.
-      </p>
+  function statusBadgeClass(st: string): string {
+    if (st === 'draft') return sv.statusDraft
+    if (st === 'active') return sv.statusActive
+    if (st === 'closed') return sv.statusClosed
+    return sv.statusDraft
+  }
 
-      <div className={styles.tabBar}>
-        <button
-          type="button"
-          className={`${styles.tabBtn} ${mainTab === 'surveys' ? styles.tabBtnActive : ''}`}
-          onClick={() => setMainTab('surveys')}
-        >
-          Surveys
-        </button>
-        {showAllTabs ? (
-          <>
-            <button
-              type="button"
-              className={`${styles.tabBtn} ${mainTab === 'responses' ? styles.tabBtnActive : ''}`}
-              onClick={() => setMainTab('responses')}
-            >
-              Responses &amp; analysis
-            </button>
-            <button
-              type="button"
-              className={`${styles.tabBtn} ${mainTab === 'actionPlans' ? styles.tabBtnActive : ''}`}
-              onClick={() => setMainTab('actionPlans')}
-            >
-              Action plans
-            </button>
-          </>
-        ) : null}
-        <button
-          type="button"
-          className={`${styles.tabBtn} ${mainTab === 'trends' ? styles.tabBtnActive : ''}`}
-          onClick={() => setMainTab('trends')}
-        >
-          Satisfaction trends
-        </button>
+  function surveyCardGrid(surveyRows: Survey[], opts: { employeeView?: boolean }) {
+    const { employeeView } = opts
+    if (loading) return <p className={styles.muted}>Loading…</p>
+    if (surveyRows.length === 0) return <p className={styles.muted}>No surveys yet.</p>
+    return (
+      <div className={sv.grid}>
+        {surveyRows.map((s) => {
+          const rc = responseCountForSurvey(s.id, responses)
+          const typeCls = s.survey_type === 'standard' ? `${sv.typePill} ${sv.typePillStandard}` : sv.typePill
+          return (
+            <div key={s.id} className={sv.surveyCard}>
+              <div className={sv.surveyCardHeader}>
+                <span className={typeCls}>{surveyTypeLabel(s.survey_type)}</span>
+                <span className={`${sv.statusBadge} ${statusBadgeClass(s.status)}`}>{s.status}</span>
+              </div>
+              <h4 className={sv.cardTitle}>{s.title}</h4>
+              <p className={sv.cardMeta}>
+                {s.start_date || s.end_date ? (
+                  <>
+                    {s.start_date ?? '—'} → {s.end_date ?? '—'}
+                  </>
+                ) : (
+                  <>Created {s.created_at.slice(0, 10)}</>
+                )}
+              </p>
+              <div>
+                <span className={sv.responseEmphasis}>{rc}</span>
+                <span className={sv.cardMeta}> responses</span>
+              </div>
+              <div className={sv.cardActions}>
+                {!employeeView && canManage && s.status === 'draft' ? (
+                  <>
+                    <button type="button" className={styles.btnSm} disabled={pending} onClick={() => void publishSurvey(s.id)}>
+                      Publish
+                    </button>
+                    <button type="button" className={sv.linkBtn} onClick={() => beginEditDraft(s)}>
+                      Edit draft
+                    </button>
+                    <button type="button" className={sv.linkBtn} onClick={() => setDeleteSurveyId(s.id)}>
+                      Delete
+                    </button>
+                  </>
+                ) : null}
+                {!employeeView && canManage && s.status === 'active' ? (
+                  <button type="button" className={styles.btnSm} disabled={pending} onClick={() => void closeSurvey(s.id)}>
+                    Close survey
+                  </button>
+                ) : null}
+                {!employeeView && (canManage || isHrOps) && (s.status === 'active' || s.status === 'closed') ? (
+                  <>
+                    <button
+                      type="button"
+                      className={sv.linkBtn}
+                      onClick={() => gotoSurveyTab('responses', { surveyIdForAnalysis: s.id })}
+                    >
+                      Responses &amp; analysis
+                    </button>
+                    <button
+                      type="button"
+                      className={sv.linkBtn}
+                      onClick={() => gotoSurveyTab('plans', { surveyIdForPlans: s.id })}
+                    >
+                      Action plans
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          )
+        })}
       </div>
+    )
+  }
+
+  return (
+    <div className={sv.page}>
+      <header className={sv.hero}>
+        <h1 className={sv.heroTitle}>Engagement &amp; Surveys</h1>
+        <p className={sv.heroSub}>
+          {showHrTabs
+            ? 'Design listening moments, publish on your timeline, review participation and themes, and turn insights into accountable follow-ups.'
+            : 'Complete your assigned surveys and share honest feedback — responses help leadership improve the workplace.'}
+        </p>
+      </header>
 
       {error ? <p className={styles.error}>{error}</p> : null}
 
-      {mainTab === 'surveys' ? (
+      {tab === 'surveys' ? (
         <>
           {canManage ? (
             <>
               {surveyTemplates.length > 0 ? (
                 <section className={styles.card} style={{ marginBottom: '1rem' }}>
-                  <h3 className={styles.h3}>Start from a template</h3>
+                  <h3 className={styles.h3}>Start from an HR template</h3>
                   <p className={styles.flowHint}>
-                    Choose a template to pre-fill title, type, and questions. Edit anything before saving as draft.
+                    Pre-built question sets aligned with common listening goals. Applying a template opens the composer — review wording and dates before saving as draft.
                   </p>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(11rem, 1fr))',
-                      gap: '0.75rem',
-                    }}
-                  >
+                  <div className={sv.templateGrid}>
                     {surveyTemplates.map((t) => (
                       <button
                         key={t.id}
                         type="button"
                         onClick={() => applySurveyTemplate(t)}
-                        className={styles.card}
-                        style={{
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                          padding: '1rem',
-                          border: '1px solid var(--border)',
-                          background: 'var(--panel, #fff)',
-                        }}
+                        className={sv.templateCard}
                       >
-                        <strong style={{ display: 'block' }}>{t.title}</strong>
-                        <span className={styles.muted} style={{ fontSize: '0.8125rem' }}>
-                          {t.questions.length} questions · {t.survey_type === 'standard' ? 'Standard' : 'Pulse'}
-                        </span>
+                        <span className={sv.templateTitle}>{t.title}</span>
+                        <span className={sv.templateMeta}>{templateDescription(t)}</span>
+                        <span className={sv.templateBadge}>{t.questions.length} questions</span>
                       </button>
                     ))}
                   </div>
                 </section>
               ) : null}
-              <section className={styles.card}>
-              <h3 className={styles.h3}>Create survey</h3>
-              <p className={styles.flowHint}>
+              <div className={sv.toolbar}>
+                <h3 className={styles.h3} style={{ margin: 0 }}>Composer</h3>
+                <button type="button" className={sv.primaryBtn} onClick={() => setShowCreateSurvey((v) => !v)}>
+                  {showCreateSurvey ? 'Close composer' : '+ New survey'}
+                </button>
+              </div>
+              {showCreateSurvey ? (
+              <section className={`${styles.card} ${sv.createPanel}`}>
+              <p className={styles.flowHint} style={{ marginTop: 0 }}>
                 Add <strong>rating (1–5)</strong>, <strong>yes/no</strong>, or <strong>open text</strong> questions. Save as draft, then publish when ready. Employees only see{' '}
                 <strong>active</strong> surveys and can submit once per survey.
               </p>
@@ -632,12 +912,13 @@ export function SurveysPage() {
                 </label>
                 <div style={{ width: '100%', marginTop: '0.5rem' }}>
                   <p className={styles.hint} style={{ fontWeight: 600 }}>
-                    Questions
+                    Question builder
                   </p>
                   {newQuestions.map((q, idx) => (
-                    <div key={q.id} className={styles.inline} style={{ flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
+                    <div key={q.id} className={sv.questionRow}>
+                      <span className={sv.qNum} aria-hidden>{idx + 1}</span>
                       <label className={styles.hint} style={{ flex: '1 1 12rem' }}>
-                        Text
+                        Wording
                         <input
                           className={styles.input}
                           value={q.text}
@@ -723,90 +1004,18 @@ export function SurveysPage() {
                 </button>
               </form>
             </section>
+              ) : null}
             </>
           ) : null}
 
           <section className={styles.card} style={{ marginTop: '1rem' }}>
-            <h3 className={styles.h3}>All surveys</h3>
-            {loading ? (
-              <p className={styles.muted}>Loading…</p>
-            ) : surveys.length === 0 ? (
-              <p className={styles.muted}>No surveys yet.</p>
-            ) : (
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Title</th>
-                      <th>Type</th>
-                      <th>Status</th>
-                      <th>Start</th>
-                      <th>End</th>
-                      <th>Responses</th>
-                      <th className={styles.tableCellActions}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {surveys.map((s) => (
-                      <tr key={s.id}>
-                        <td>{s.title}</td>
-                        <td>{surveyTypeLabel(s.survey_type)}</td>
-                        <td>{s.status}</td>
-                        <td>{s.start_date ?? '—'}</td>
-                        <td>{s.end_date ?? '—'}</td>
-                        <td>{responseCountForSurvey(s.id, responses)}</td>
-                        <td className={styles.tableCellActions}>
-                          {canManage && s.status === 'draft' ? (
-                            <>
-                              <button type="button" className={styles.btnSm} disabled={pending} onClick={() => void publishSurvey(s.id)}>
-                                Publish
-                              </button>{' '}
-                              <button type="button" className={styles.linkBtn} onClick={() => beginEditDraft(s)}>
-                                Edit draft
-                              </button>{' '}
-                              <button type="button" className={styles.linkBtn} onClick={() => setDeleteSurveyId(s.id)}>
-                                Delete
-                              </button>
-                            </>
-                          ) : null}
-                          {canManage && s.status === 'active' ? (
-                            <button type="button" className={styles.btnSm} disabled={pending} onClick={() => void closeSurvey(s.id)}>
-                              Close
-                            </button>
-                          ) : null}
-                          {(canManage || isHrOps) && (s.status === 'active' || s.status === 'closed') ? (
-                            <>
-                              {' '}
-                              <button
-                                type="button"
-                                className={styles.linkBtn}
-                                onClick={() => {
-                                  setAnalysisSurveyId(s.id)
-                                  setMainTab('responses')
-                                }}
-                              >
-                                Analysis
-                              </button>
-                              {' '}
-                              <button
-                                type="button"
-                                className={styles.linkBtn}
-                                onClick={() => {
-                                  setPlanSurveyId(s.id)
-                                  setMainTab('actionPlans')
-                                }}
-                              >
-                                Action plans
-                              </button>
-                            </>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <h3 className={styles.h3}>{isEmployee ? 'Company surveys' : 'Survey catalog'}</h3>
+            <p className={styles.flowHint}>
+              {isEmployee
+                ? 'Published and closed cycles appear here. Open My Surveys to respond when a survey is active.'
+                : 'Track lifecycle, participation, and follow-through from one place.'}
+            </p>
+            {surveyCardGrid(surveys, { employeeView: isEmployee })}
           </section>
 
           {editingSurveyId && canManage ? (
@@ -837,7 +1046,8 @@ export function SurveysPage() {
                   <input className={styles.input} type="date" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} />
                 </label>
                 {editQuestions.map((q, idx) => (
-                  <div key={q.id} className={styles.inline} style={{ flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
+                  <div key={q.id} className={sv.questionRow}>
+                    <span className={sv.qNum} aria-hidden>{idx + 1}</span>
                     <input
                       className={styles.input}
                       style={{ flex: '1 1 14rem' }}
@@ -902,141 +1112,126 @@ export function SurveysPage() {
               </div>
             </section>
           ) : null}
+        </>
+      ) : null}
 
-          {isEmployee ? (
-            <section className={styles.card} style={{ marginTop: '1rem' }}>
-              <h3 className={styles.h3}>Respond to a survey</h3>
-              {!myEmployee ? (
-                <p className={styles.muted}>No employee profile linked to your account. Ask an admin to link your user to an employee record.</p>
-              ) : activeSurveysForEmployee.length === 0 ? (
-                <p className={styles.muted}>There are no active surveys right now.</p>
-              ) : (
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {activeSurveysForEmployee.map((s) => {
-                    const done = employeeRespondedIds.has(s.id)
-                    return (
-                      <li key={s.id} className={styles.card} style={{ marginBottom: '0.75rem', padding: '1rem' }}>
-                        <strong>{s.title}</strong>
-                        <span className={styles.muted}> · {surveyTypeLabel(s.survey_type)}</span>
-                        {done ? (
-                          <p className={styles.hint} style={{ marginTop: '0.5rem' }}>
-                            Submitted — thank you.
-                          </p>
-                        ) : (
-                          <div style={{ marginTop: '0.5rem' }}>
-                            {respondSurveyId === s.id ? null : (
-                              <button type="button" className={styles.btnSm} onClick={() => setRespondSurveyId(s.id)}>
-                                Respond
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
+      {tab === 'my' && isEmployee ? (
+        <section className={styles.card}>
+          <h3 className={styles.h3}>My surveys</h3>
+          <p className={styles.flowHint}>Active surveys you can complete. You can submit once per survey while it is open.</p>
+          {!myEmployee ? (
+            <p className={styles.muted}>No employee profile linked to your account. Ask an admin to link your user to an employee record.</p>
+          ) : activeSurveysForEmployee.length === 0 ? (
+            <div className={sv.emptyState}>There are no active surveys right now. Check back when HR publishes a new listening cycle.</div>
+          ) : (
+            <>
+              {activeSurveysForEmployee.map((surveyRow) => {
+                const done = employeeRespondedIds.has(surveyRow.id)
+                return (
+                  <div key={surveyRow.id} className={`${sv.empCard} ${done ? sv.empCardDone : ''}`}>
+                    <div>
+                      <span className={surveyRow.survey_type === 'standard' ? `${sv.typePill} ${sv.typePillStandard}` : sv.typePill}>
+                        {surveyTypeLabel(surveyRow.survey_type)}
+                      </span>
+                      <h4 className={sv.cardTitle} style={{ marginTop: '0.35rem' }}>{surveyRow.title}</h4>
+                      {done ? (
+                        <p className={sv.checkmark} style={{ margin: '0.35rem 0 0' }}>Submitted — thank you.</p>
+                      ) : (
+                        <p className={styles.muted} style={{ margin: '0.35rem 0 0', fontSize: '0.875rem' }}>Your feedback is confidential to HR.</p>
+                      )}
+                    </div>
+                    {!done && respondSurveyId !== surveyRow.id ? (
+                      <button type="button" className={sv.primaryBtn} onClick={() => setRespondSurveyId(surveyRow.id)}>
+                        Take survey
+                      </button>
+                    ) : null}
+                  </div>
+                )
+              })}
 
               {respondSurveyId && respondSurvey && myEmployee ? (
-                <div className={styles.card} style={{ marginTop: '1rem', padding: '1rem', border: '1px solid var(--border)' }}>
-                  <h4 className={styles.h3}>{respondSurvey.title}</h4>
-                  {respondQuestions.map((q) => (
-                    <div key={q.id} style={{ marginBottom: '1rem' }}>
-                      <div className={styles.hint}>
+                <div className={sv.respondPanel}>
+                  <h4 className={styles.h3} style={{ marginTop: 0 }}>{respondSurvey.title}</h4>
+                  {respondQuestions.map((q, qi) => (
+                    <div key={q.id} className={sv.qBlock}>
+                      <div className={sv.qLabel}>Question {qi + 1}</div>
+                      <div className={styles.hint} style={{ fontWeight: 600, marginBottom: '0.35rem' }}>
                         {q.text}
                         {q.required ? <span className={styles.error}> *</span> : null}
-                        {q.type === 'rating_1_5' ? (
-                          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
-                            {[1, 2, 3, 4, 5].map((n) => {
-                              const selected = respondAnswers[q.id] === String(n)
-                              return (
-                                <button
-                                  key={n}
-                                  type="button"
-                                  className={styles.btnSm}
-                                  style={{
-                                    width: 40,
-                                    height: 40,
-                                    minWidth: 40,
-                                    padding: 0,
-                                    borderRadius: '50%',
-                                    fontWeight: 700,
-                                    lineHeight: 1,
-                                    border: selected ? '2px solid var(--accent, #148F77)' : '1px solid var(--border)',
-                                    background: selected ? 'var(--accent, #148F77)' : 'transparent',
-                                    color: selected ? '#fff' : 'inherit',
-                                  }}
-                                  onClick={() => setRespondAnswers((prev) => ({ ...prev, [q.id]: String(n) }))}
-                                >
-                                  {n}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        ) : null}
-                        {q.type === 'yes_no' ? (
-                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.4rem' }}>
-                            {(['yes', 'no'] as const).map((yn) => {
-                              const selected = respondAnswers[q.id] === yn
-                              return (
-                                <button
-                                  key={yn}
-                                  type="button"
-                                  className={styles.btnSm}
-                                  style={{
-                                    minWidth: '5rem',
-                                    border: selected ? '2px solid var(--accent, #148F77)' : '1px solid var(--border)',
-                                    background: selected ? 'rgba(20, 143, 119, 0.12)' : 'transparent',
-                                    fontWeight: selected ? 600 : 400,
-                                  }}
-                                  onClick={() => setRespondAnswers((prev) => ({ ...prev, [q.id]: yn }))}
-                                >
-                                  {yn === 'yes' ? 'Yes' : 'No'}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        ) : null}
-                        {q.type === 'text' ? (
-                          <>
-                            <textarea
-                              className={styles.input}
-                              style={{ minHeight: 72, marginTop: '0.4rem' }}
-                              value={respondAnswers[q.id] ?? ''}
-                              onChange={(e) => setRespondAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                            />
-                            <span className={styles.muted} style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.25rem' }}>
-                              {(respondAnswers[q.id] ?? '').length} characters
-                            </span>
-                          </>
-                        ) : null}
                       </div>
+                      {q.type === 'rating_1_5' ? (
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                          {[1, 2, 3, 4, 5].map((n) => {
+                            const selected = respondAnswers[q.id] === String(n)
+                            return (
+                              <button
+                                key={n}
+                                type="button"
+                                className={`${sv.ratingBtn} ${selected ? sv.ratingBtnSelected : ''}`}
+                                onClick={() => setRespondAnswers((prev) => ({ ...prev, [q.id]: String(n) }))}
+                              >
+                                {n}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      ) : null}
+                      {q.type === 'yes_no' ? (
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                          {(['yes', 'no'] as const).map((yn) => {
+                            const selected = respondAnswers[q.id] === yn
+                            return (
+                              <button
+                                key={yn}
+                                type="button"
+                                className={`${sv.yesNoToggle} ${selected ? sv.yesNoToggleSelected : ''}`}
+                                onClick={() => setRespondAnswers((prev) => ({ ...prev, [q.id]: yn }))}
+                              >
+                                {yn === 'yes' ? 'Yes' : 'No'}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      ) : null}
+                      {q.type === 'text' ? (
+                        <>
+                          <textarea
+                            className={styles.input}
+                            style={{ minHeight: 88, marginTop: '0.4rem' }}
+                            value={respondAnswers[q.id] ?? ''}
+                            onChange={(e) => setRespondAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                          />
+                          <span className={styles.muted} style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.25rem' }}>
+                            {(respondAnswers[q.id] ?? '').length} characters
+                          </span>
+                        </>
+                      ) : null}
                     </div>
                   ))}
                   <div className={styles.inline} style={{ gap: '0.5rem' }}>
-                    <button type="button" className={styles.btnSm} disabled={pending} onClick={() => void submitEmployeeResponse()}>
+                    <button type="button" className={sv.primaryBtn} disabled={pending} onClick={() => void submitEmployeeResponse()}>
                       Submit response
                     </button>
-                    <button type="button" className={styles.btnSm} onClick={() => { setRespondSurveyId(null); setRespondAnswers({}) }}>
+                    <button type="button" className={sv.ghostBtn} onClick={() => { setRespondSurveyId(null); setRespondAnswers({}) }}>
                       Cancel
                     </button>
                   </div>
                 </div>
               ) : null}
-            </section>
-          ) : null}
-        </>
+            </>
+          )}
+        </section>
       ) : null}
 
-      {mainTab === 'responses' && showAllTabs ? (
+      {tab === 'responses' && showHrTabs ? (
         <section className={styles.card}>
           <h3 className={styles.h3}>Responses &amp; analysis</h3>
           <p className={styles.flowHint}>
             Pick a survey. Response rate uses <strong>total employees in the company</strong> as the denominator (approximate reach).
           </p>
-          <label className={styles.hint} style={{ display: 'block', marginBottom: '1rem' }}>
+          <label className={`${styles.hint} ${sv.surveySelectWrap}`}>
             Survey
-            <select className={styles.input} value={analysisSurveyId} onChange={(e) => setAnalysisSurveyId(e.target.value)}>
+            <select className={sv.surveySelect} value={analysisSurveyId} onChange={(e) => setAnalysisSurveyId(e.target.value)}>
               {surveys.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.title} ({s.status})
@@ -1048,35 +1243,26 @@ export function SurveysPage() {
             <p className={styles.muted}>No survey selected.</p>
           ) : (
             <>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '1.5rem',
-                  flexWrap: 'wrap',
-                  marginBottom: '1.25rem',
-                  padding: '1rem',
-                  background: 'rgba(0,0,0,0.03)',
-                  borderRadius: 8,
-                }}
-              >
-                <div>
-                  <div className={styles.muted} style={{ fontSize: '0.75rem' }}>
-                    Responses
-                  </div>
-                  <strong style={{ fontSize: '1.5rem' }}>{analysisResponses.length}</strong>
+              <div className={sv.statsRow}>
+                <div className={sv.statBox}>
+                  <div className={sv.statLabel}>Responses collected</div>
+                  <div className={sv.statValue}>{analysisResponses.length}</div>
                 </div>
-                <div>
-                  <div className={styles.muted} style={{ fontSize: '0.75rem' }}>
-                    Approx. response rate
-                  </div>
-                  <strong style={{ fontSize: '1.5rem' }}>{responseRatePct}%</strong>
+                <div className={`${sv.statBox} ${responseRateTier === 'good' ? sv.statGood : responseRateTier === 'warn' ? sv.statWarn : sv.statBad}`}>
+                  <div className={sv.statLabel}>Approx. response rate</div>
+                  <div className={sv.statValue}>{responseRatePct}%</div>
+                </div>
+                <div className={sv.statBox}>
+                  <div className={sv.statLabel}>Avg. rating (where applicable)</div>
+                  <div className={sv.statValue}>{avgOverallRating != null ? `${avgOverallRating.toFixed(2)} / 5` : '—'}</div>
                 </div>
               </div>
 
-              <p style={{ marginTop: '0.75rem' }}>
+              <p style={{ marginTop: '0.25rem', fontSize: '0.9rem' }}>
                 <strong>
                   {analysisResponses.length} of {eligibleHeadcount} employees responded
-                </strong>
+                </strong>{' '}
+                <span className={styles.muted}>(company headcount as reach)</span>
               </p>
               {lowResponseWarning ? (
                 <p className={styles.error} style={{ marginTop: '0.5rem', maxWidth: '40rem' }}>
@@ -1085,25 +1271,25 @@ export function SurveysPage() {
               ) : null}
 
               {questionStats.map((row) => (
-                <div key={row.q.id} className={styles.card} style={{ marginBottom: '1rem', padding: '1rem' }}>
-                  <h4 className={styles.h3}>{row.q.text}</h4>
-                  <p className={styles.muted} style={{ fontSize: '0.8125rem' }}>
-                    Type: {row.q.type}
+                <div key={row.q.id} className={sv.analysisQCard}>
+                  <h4 className={sv.analysisQTitle}>{row.q.text}</h4>
+                  <p className={styles.muted} style={{ fontSize: '0.75rem', marginBottom: '0.65rem' }}>
+                    {row.q.type === 'rating_1_5' ? 'Scale 1–5' : row.q.type === 'yes_no' ? 'Yes / No' : 'Open text'}
                   </p>
                   {row.kind === 'rating' ? (
                     <>
-                      <p>
-                        <strong>Average:</strong> {row.avg ? row.avg.toFixed(2) : '—'} / 5
+                      <p style={{ margin: '0 0 0.5rem' }}>
+                        <strong>Average score:</strong> {row.avg ? row.avg.toFixed(2) : '—'} / 5
                       </p>
-                      <div style={{ marginTop: '0.5rem' }}>
+                      <div>
                         {row.dist.map(({ star, count }) => {
                           const max = Math.max(1, ...row.dist.map((d) => d.count))
                           const w = (count / max) * 100
                           return (
-                            <div key={star} className={styles.inline} style={{ alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                              <span style={{ width: '4rem', fontSize: '0.8125rem' }}>{star}</span>
-                              <div style={{ flex: 1, height: 10, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
-                                <div style={{ width: `${w}%`, height: '100%', background: 'var(--accent, #148F77)' }} />
+                            <div key={star} className={sv.ratingBarRow}>
+                              <span className={sv.ratingBarLabel}>★ {star}</span>
+                              <div className={sv.ratingBarTrack}>
+                                <div className={sv.ratingBarFill} style={{ width: `${w}%` }} />
                               </div>
                               <span style={{ width: '2rem', fontSize: '0.8125rem' }}>{count}</span>
                             </div>
@@ -1113,25 +1299,25 @@ export function SurveysPage() {
                     </>
                   ) : null}
                   {row.kind === 'yesno' ? (
-                    <div className={styles.inline} style={{ width: '100%', maxWidth: '28rem', height: 24, borderRadius: 4, overflow: 'hidden' }}>
-                      <div style={{ width: `${row.yesPct}%`, background: '#148F77', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.75rem' }}>
+                    <div className={sv.yesNoBar} style={{ maxWidth: '28rem' }}>
+                      <div className={sv.yesSeg} style={{ width: `${row.yesPct}%` }}>
                         Yes {row.yesPct.toFixed(0)}%
                       </div>
-                      <div style={{ width: `${row.noPct}%`, background: '#5d6d7e', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.75rem' }}>
+                      <div className={sv.noSeg} style={{ width: `${row.noPct}%` }}>
                         No {row.noPct.toFixed(0)}%
                       </div>
                     </div>
                   ) : null}
                   {row.kind === 'text' ? (
-                    <div style={{ maxHeight: 200, overflow: 'auto', fontSize: '0.875rem' }}>
+                    <div style={{ maxHeight: 220, overflow: 'auto' }}>
                       {row.texts.length === 0 ? (
                         <p className={styles.muted}>No text answers.</p>
                       ) : (
-                        <ul>
-                          {row.texts.map((t, i) => (
-                            <li key={i}>{t}</li>
-                          ))}
-                        </ul>
+                        row.texts.map((t, i) => (
+                          <p key={i} className={sv.textQuote}>
+                            {t}
+                          </p>
+                        ))
                       )}
                     </div>
                   ) : null}
@@ -1186,13 +1372,65 @@ export function SurveysPage() {
         </section>
       ) : null}
 
-      {mainTab === 'actionPlans' && showAllTabs ? (
+      {tab === 'plans' && isEmployee ? (
         <section className={styles.card}>
           <h3 className={styles.h3}>Action plans</h3>
-          <p className={styles.flowHint}>Create follow-up items tied to a survey. Assign an employee and track status.</p>
-          <label className={styles.hint} style={{ display: 'block', marginBottom: '1rem' }}>
-            Survey
-            <select className={styles.input} value={planSurveyId} onChange={(e) => setPlanSurveyId(e.target.value)}>
+          <p className={styles.flowHint}>
+            Follow-ups owned by your department that apply to you. HR creates these from survey results; status updates as work progresses.
+          </p>
+          {!myEmployee ? (
+            <p className={styles.muted}>No employee profile linked to your account. Ask an admin to link your user to an employee record.</p>
+          ) : myActionPlans.length === 0 ? (
+            <div className={sv.emptyState}>No action plans for you yet. When a survey owner assigns a plan to your department, it will appear here.</div>
+          ) : (
+            <>
+              {Array.from(myActionPlansBySurvey.entries()).map(([surveyId, plans]) => {
+                const surveyRow = surveys.find((s) => s.id === surveyId)
+                const surveyTitle = surveyRow?.title ?? '(Survey)'
+                return (
+                  <div key={surveyId} className={sv.planSection}>
+                    <h4 className={sv.planSectionTitle}>{surveyTitle}</h4>
+                    {plans.map((p) => {
+                      const ownerDept = p.owner_department_id ? departments.find((d) => d.id === p.owner_department_id) : null
+                      const badgeCls =
+                        p.status === 'open' ? sv.badgeOpen : p.status === 'in_progress' ? sv.badgeProgress : sv.badgeDone
+                      return (
+                        <div key={p.id} className={sv.planCard}>
+                          <div className={sv.initials} title={ownerDept?.name ?? 'Dept'}>
+                            {ownerDept ? initialsFromLabel(ownerDept.name) : '—'}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p className={sv.planTitle}>{p.title}</p>
+                            {p.description ? <p className={styles.muted} style={{ fontSize: '0.85rem', margin: '0.25rem 0 0' }}>{p.description}</p> : null}
+                            <p className={styles.muted} style={{ fontSize: '0.8rem', margin: '0.35rem 0 0' }}>
+                              Owning department: {ownerDept?.name ?? '—'} · {participantSummary(p, departments, employees)}
+                            </p>
+                            <p className={styles.muted} style={{ fontSize: '0.8rem', margin: '0.15rem 0 0' }}>
+                              Due {p.due_date ?? '—'}
+                            </p>
+                          </div>
+                          <span className={`${sv.planBadge} ${badgeCls}`}>{p.status.replace('_', ' ')}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {tab === 'plans' && showHrTabs ? (
+        <section className={styles.card}>
+          <h3 className={styles.h3}>Action plans</h3>
+          <p className={styles.flowHint}>
+            Turn survey signals into follow-ups. <strong>Owner</strong> is the department that owns the plan (members see it in their Action plans tab).{' '}
+            <strong>Participants</strong> narrows who the action applies to among that department.
+          </p>
+          <label className={`${styles.hint} ${sv.surveySelectWrap}`}>
+            Context — survey
+            <select className={sv.surveySelect} value={planSurveyId} onChange={(e) => setPlanSurveyId(e.target.value)}>
               {surveys.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.title}
@@ -1202,79 +1440,172 @@ export function SurveysPage() {
           </label>
 
           {canManage ? (
-            <form onSubmit={onCreateActionPlan} className={styles.positionForm} style={{ marginBottom: '1.5rem' }}>
-              <label className={styles.hint}>
-                Title
-                <input className={styles.input} value={planTitle} onChange={(e) => setPlanTitle(e.target.value)} required />
-              </label>
-              <label className={styles.hint} style={{ flex: '1 1 100%' }}>
-                Description (optional)
-                <textarea className={styles.input} style={{ minHeight: 64 }} value={planDescription} onChange={(e) => setPlanDescription(e.target.value)} />
-              </label>
-              <label className={styles.hint}>
-                Assignee
-                <select className={styles.input} value={planAssigneeId} onChange={(e) => setPlanAssigneeId(e.target.value)}>
-                  <option value="">—</option>
-                  {employees.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {employeeLabel(e)} ({e.employee_code})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className={styles.hint}>
-                Due date
-                <input className={styles.input} type="date" value={planDue} onChange={(e) => setPlanDue(e.target.value)} />
-              </label>
-              <label className={styles.hint}>
-                Initial status
-                <select className={styles.input} value={planStatus} onChange={(e) => setPlanStatus(e.target.value)}>
-                  <option value="open">Open</option>
-                  <option value="in_progress">In progress</option>
-                  <option value="done">Done</option>
-                </select>
-              </label>
-              <button type="submit" className={styles.btnSm} disabled={pending || !planSurveyId}>
-                Add action plan
-              </button>
-            </form>
+            <div className={sv.addPlanCard}>
+              <h4 className={styles.h3} style={{ marginTop: 0 }}>Add action item</h4>
+              <form onSubmit={onCreateActionPlan} className={styles.positionForm}>
+                <label className={styles.hint}>
+                  Title
+                  <input className={styles.input} value={planTitle} onChange={(e) => setPlanTitle(e.target.value)} required />
+                </label>
+                <label className={styles.hint} style={{ flex: '1 1 100%' }}>
+                  Description (optional)
+                  <textarea className={styles.input} style={{ minHeight: 64 }} value={planDescription} onChange={(e) => setPlanDescription(e.target.value)} />
+                </label>
+                <label className={styles.hint}>
+                  Owner (department)
+                  <select
+                    className={styles.input}
+                    value={planOwnerDeptId}
+                    onChange={(e) => setPlanOwnerDeptId(e.target.value)}
+                    required
+                  >
+                    {departments.length === 0 ? <option value="">Loading departments…</option> : null}
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.hint}>
+                  Participants
+                  <select
+                    className={styles.input}
+                    value={planParticipantScope}
+                    onChange={(e) => setPlanParticipantScope(e.target.value as ParticipantScope)}
+                  >
+                    <option value="all">All (everyone in owning department)</option>
+                    <option value="department">By department</option>
+                    <option value="grade">By org grade (position)</option>
+                    <option value="individual">Individual employees</option>
+                  </select>
+                </label>
+                {planParticipantScope === 'department' ? (
+                  <label className={styles.hint} style={{ flex: '1 1 100%' }}>
+                    Departments (hold Ctrl/Cmd to select multiple)
+                    <select
+                      multiple
+                      className={styles.input}
+                      size={Math.min(8, Math.max(3, departments.length || 3))}
+                      value={planFilterDeptIds}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions).map((o) => o.value)
+                        setPlanFilterDeptIds(selected)
+                      }}
+                    >
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                {planParticipantScope === 'grade' ? (
+                  <label className={styles.hint} style={{ flex: '1 1 100%' }}>
+                    Org grades (from positions)
+                    <select
+                      multiple
+                      className={styles.input}
+                      size={Math.min(8, Math.max(3, positionGrades.length || 3))}
+                      value={planFilterGrades.map(String)}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions).map((o) => Number(o.value))
+                        setPlanFilterGrades(selected)
+                      }}
+                    >
+                      {positionGrades.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                {planParticipantScope === 'individual' ? (
+                  <label className={styles.hint} style={{ flex: '1 1 100%' }}>
+                    Employees (hold Ctrl/Cmd to select multiple)
+                    <select
+                      multiple
+                      className={styles.input}
+                      size={Math.min(8, Math.max(3, employees.length || 3))}
+                      value={planFilterEmployeeIds}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions).map((o) => o.value)
+                        setPlanFilterEmployeeIds(selected)
+                      }}
+                    >
+                      {employees.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {employeeLabel(e)} ({e.employee_code})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label className={styles.hint}>
+                  Due date
+                  <input className={styles.input} type="date" value={planDue} onChange={(e) => setPlanDue(e.target.value)} />
+                </label>
+                <label className={styles.hint}>
+                  Initial status
+                  <select className={styles.input} value={planStatus} onChange={(e) => setPlanStatus(e.target.value)}>
+                    <option value="open">Open</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="done">Done</option>
+                  </select>
+                </label>
+                <button type="submit" className={sv.primaryBtn} disabled={pending || !planSurveyId || !planOwnerDeptId}>
+                  Add action plan
+                </button>
+              </form>
+            </div>
           ) : (
             <p className={styles.flowHint}>
-              <strong>View only</strong> — action plans are created by company admin or compensation analytics.
+              <strong>View only</strong> — new items are created by company admin or compensation analytics.
             </p>
           )}
 
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Assignee</th>
-                  <th>Due</th>
-                  <th>Status</th>
-                  {canManage || isHrOps ? <th className={styles.tableCellActions}>Update</th> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {actionPlans.length === 0 ? (
-                  <tr>
-                    <td colSpan={canManage || isHrOps ? 5 : 4} className={styles.muted}>
-                      No action plans for this survey.
-                    </td>
-                  </tr>
-                ) : (
-                  actionPlans.map((p) => {
-                    const assignee = p.assignee_employee_id ? employees.find((e) => e.id === p.assignee_employee_id) : null
-                    return (
-                      <tr key={p.id}>
-                        <td>{p.title}</td>
-                        <td>{assignee ? employeeLabel(assignee) : '—'}</td>
-                        <td>{p.due_date ?? '—'}</td>
-                        <td>{p.status}</td>
-                        {canManage || isHrOps ? (
-                          <td className={styles.tableCellActions}>
+          {actionPlans.length === 0 ? (
+            <div className={sv.emptyState}>No action plans for this survey yet.</div>
+          ) : (
+            <>
+              {(['open', 'in_progress', 'done'] as const).map((key) => {
+                const list =
+                  key === 'open'
+                    ? actionPlansByStatus.open
+                    : key === 'in_progress'
+                      ? actionPlansByStatus.in_progress
+                      : actionPlansByStatus.done
+                const title = key === 'open' ? 'Open' : key === 'in_progress' ? 'In progress' : 'Done'
+                if (list.length === 0) return null
+                return (
+                  <div key={key} className={sv.planSection}>
+                    <h4 className={sv.planSectionTitle}>{title}</h4>
+                    {list.map((p) => {
+                      const ownerDept = p.owner_department_id ? departments.find((d) => d.id === p.owner_department_id) : null
+                      const badgeCls =
+                        p.status === 'open' ? sv.badgeOpen : p.status === 'in_progress' ? sv.badgeProgress : sv.badgeDone
+                      return (
+                        <div key={p.id} className={sv.planCard}>
+                          <div className={sv.initials} title={ownerDept?.name ?? 'Dept'}>
+                            {ownerDept ? initialsFromLabel(ownerDept.name) : '—'}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p className={sv.planTitle}>{p.title}</p>
+                            {p.description ? <p className={styles.muted} style={{ fontSize: '0.85rem', margin: '0.25rem 0 0' }}>{p.description}</p> : null}
+                            <p className={styles.muted} style={{ fontSize: '0.8rem', margin: '0.35rem 0 0' }}>
+                              Owning department: {ownerDept?.name ?? '—'} · {participantSummary(p, departments, employees)}
+                            </p>
+                            <p className={styles.muted} style={{ fontSize: '0.8rem', margin: '0.15rem 0 0' }}>
+                              Due {p.due_date ?? '—'}
+                            </p>
+                          </div>
+                          <span className={`${sv.planBadge} ${badgeCls}`}>{p.status.replace('_', ' ')}</span>
+                          {canManage || isHrOps ? (
                             <select
                               className={styles.input}
+                              style={{ maxWidth: 140 }}
                               value={p.status}
                               disabled={pending}
                               onChange={(e) => void patchPlanStatus(p.id, e.target.value)}
@@ -1283,19 +1614,19 @@ export function SurveysPage() {
                               <option value="in_progress">In progress</option>
                               <option value="done">Done</option>
                             </select>
-                          </td>
-                        ) : null}
-                      </tr>
-                    )
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </>
+          )}
         </section>
       ) : null}
 
-      {mainTab === 'trends' ? (
+      {tab === 'trends' && showHrTabs ? (
         <section className={styles.card}>
           <h3 className={styles.h3}>Satisfaction trends</h3>
           <p className={styles.flowHint}>
@@ -1316,52 +1647,39 @@ export function SurveysPage() {
             </label>
           ) : null}
           {trendData.length === 0 ? (
-            <p className={styles.muted}>No rating responses yet across active/closed surveys.</p>
+            <div className={sv.emptyState}>
+              No rating data yet. Publish surveys with 1–5 scale questions and collect responses to see satisfaction trendlines here.
+            </div>
           ) : (
             <>
               {companyWideAvgBenchmark != null ? (
-                <p className={styles.muted} style={{ marginBottom: '1rem', maxWidth: '40rem' }}>
-                  <strong>Company-wide average</strong> (benchmark across the surveys below):{' '}
-                  <strong>{companyWideAvgBenchmark.toFixed(2)} / 5</strong>. The dashed line marks this average on each bar.
+                <p className={styles.muted} style={{ marginBottom: '1rem', maxWidth: '42rem' }}>
+                  <strong>Benchmark</strong> — company-wide average across the surveys below:{' '}
+                  <strong>{companyWideAvgBenchmark.toFixed(2)} / 5</strong>. The red dashed line shows this level on each bar.
                 </p>
               ) : null}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {trendData.map((row) => {
                   const w = (row.avg / 5) * 100
                   const benchPct = companyWideAvgBenchmark != null ? (companyWideAvgBenchmark / 5) * 100 : null
                   return (
-                    <div key={row.surveyId}>
-                      <div className={styles.inline} style={{ justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                        <span style={{ fontSize: '0.875rem' }}>
+                    <div key={row.surveyId} className={sv.trendRow}>
+                      <div className={sv.trendHead}>
+                        <span style={{ fontSize: '0.9rem' }}>
                           <strong>{row.title}</strong>
                           <span className={styles.muted}> · {row.label}</span>
                         </span>
-                        <span style={{ fontSize: '0.875rem' }}>{row.avg.toFixed(2)} / 5</span>
+                        <span className={sv.trendValue}>{row.avg.toFixed(2)} / 5</span>
                       </div>
-                      <div style={{ position: 'relative', height: 14, marginBottom: 4 }}>
-                        <div
-                          style={{
-                            height: 14,
-                            background: 'var(--border)',
-                            borderRadius: 6,
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <div style={{ width: `${w}%`, height: '100%', background: '#1B4F72', borderRadius: '6px 0 0 6px' }} />
+                      <div className={sv.trendBarWrap}>
+                        <div className={sv.trendBarBg}>
+                          <div className={sv.trendBarFill} style={{ width: `${w}%` }} />
                         </div>
                         {benchPct != null ? (
                           <div
+                            className={sv.trendBench}
                             title={`Company average ${companyWideAvgBenchmark!.toFixed(2)} / 5`}
-                            style={{
-                              position: 'absolute',
-                              left: `${benchPct}%`,
-                              top: -3,
-                              bottom: -3,
-                              width: 0,
-                              borderLeft: '2px dashed #c0392b',
-                              pointerEvents: 'none',
-                              zIndex: 1,
-                            }}
+                            style={{ left: `${benchPct}%` }}
                           />
                         ) : null}
                       </div>

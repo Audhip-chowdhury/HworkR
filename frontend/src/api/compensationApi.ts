@@ -389,6 +389,8 @@ export type SurveyUpdate = {
   survey_type?: string | null
 }
 
+export type ParticipantScope = 'all' | 'department' | 'grade' | 'individual'
+
 export type SurveyActionPlan = {
   id: string
   survey_id: string
@@ -396,6 +398,9 @@ export type SurveyActionPlan = {
   title: string
   description: string | null
   assignee_employee_id: string | null
+  owner_department_id: string | null
+  participant_scope: ParticipantScope | string
+  participant_filter_json: Record<string, unknown> | null
   due_date: string | null
   status: string
   created_by: string | null
@@ -406,6 +411,9 @@ export type SurveyActionPlanCreate = {
   title: string
   description?: string | null
   assignee_employee_id?: string | null
+  owner_department_id: string
+  participant_scope?: ParticipantScope
+  participant_filter_json?: Record<string, unknown> | null
   due_date?: string | null
   status?: string
 }
@@ -414,6 +422,9 @@ export type SurveyActionPlanUpdate = {
   title?: string
   description?: string | null
   assignee_employee_id?: string | null
+  owner_department_id?: string | null
+  participant_scope?: ParticipantScope
+  participant_filter_json?: Record<string, unknown> | null
   due_date?: string | null
   status?: string
 }
@@ -626,6 +637,9 @@ export const createSurveyResponse = (companyId: string, body: SurveyResponseCrea
 
 export const listActionPlans = (companyId: string, surveyId: string) =>
   apiFetch<SurveyActionPlan[]>(companyPath(companyId, `/engagement/surveys/${surveyId}/action-plans`))
+/** Action plans visible to the current user (employee role); scoped by owning department and participant rules. */
+export const listMyActionPlans = (companyId: string) =>
+  apiFetch<SurveyActionPlan[]>(companyPath(companyId, '/engagement/my-action-plans'))
 export const createActionPlan = (companyId: string, surveyId: string, body: SurveyActionPlanCreate) =>
   apiFetch<SurveyActionPlan>(companyPath(companyId, `/engagement/surveys/${surveyId}/action-plans`), {
     method: 'POST',

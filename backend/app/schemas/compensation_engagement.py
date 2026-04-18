@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SalaryStructureCreate(BaseModel):
@@ -267,20 +267,83 @@ class SurveyTemplateOut(BaseModel):
     questions: list[SurveyTemplateQuestionOut]
 
 
+ParticipantScope = Literal["all", "department", "grade", "individual"]
+
+
 class SurveyActionPlanCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     description: str | None = None
     assignee_employee_id: str | None = None
+    owner_department_id: str
+    participant_scope: ParticipantScope = "all"
+    participant_filter_json: dict[str, Any] | None = None
     due_date: str | None = Field(default=None, max_length=32)
     status: str = Field(default="open", max_length=32)
+
+    @model_validator(mode="after")
+    def validate_participant_filter(self) -> "SurveyActionPlanCreate":
+        scope = self.participant_scope
+        fj = self.participant_filter_json or {}
+        if scope == "all":
+            return self
+        if scope == "department":
+            ids = fj.get("department_ids")
+            if not isinstance(ids, list) or not all(isinstance(x, str) and x.strip() for x in ids):
+                raise ValueError("participant_filter_json.department_ids must be a non-empty list of ids")
+            if len(ids) == 0:
+                raise ValueError("participant_filter_json.department_ids cannot be empty")
+        elif scope == "grade":
+            grades = fj.get("grades")
+            if not isinstance(grades, list) or not grades:
+                raise ValueError("participant_filter_json.grades must be a non-empty list of integers")
+            if not all(isinstance(g, int) for g in grades):
+                raise ValueError("participant_filter_json.grades must be integers")
+        elif scope == "individual":
+            eids = fj.get("employee_ids")
+            if not isinstance(eids, list) or not eids:
+                raise ValueError("participant_filter_json.employee_ids must be a non-empty list")
+            if not all(isinstance(x, str) and x.strip() for x in eids):
+                raise ValueError("participant_filter_json.employee_ids must be string ids")
+        return self
 
 
 class SurveyActionPlanUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     assignee_employee_id: str | None = None
+    owner_department_id: str | None = None
+    participant_scope: ParticipantScope | None = None
+    participant_filter_json: dict[str, Any] | None = None
     due_date: str | None = Field(default=None, max_length=32)
     status: str | None = Field(default=None, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_participant_filter(self) -> "SurveyActionPlanUpdate":
+        scope = self.participant_scope
+        if scope is None:
+            return self
+        fj = self.participant_filter_json if self.participant_filter_json is not None else {}
+        if scope == "all":
+            return self
+        if scope == "department":
+            ids = fj.get("department_ids")
+            if not isinstance(ids, list) or not all(isinstance(x, str) and x.strip() for x in ids):
+                raise ValueError("participant_filter_json.department_ids must be a non-empty list of ids")
+            if len(ids) == 0:
+                raise ValueError("participant_filter_json.department_ids cannot be empty")
+        elif scope == "grade":
+            grades = fj.get("grades")
+            if not isinstance(grades, list) or not grades:
+                raise ValueError("participant_filter_json.grades must be a non-empty list of integers")
+            if not all(isinstance(g, int) for g in grades):
+                raise ValueError("participant_filter_json.grades must be integers")
+        elif scope == "individual":
+            eids = fj.get("employee_ids")
+            if not isinstance(eids, list) or not eids:
+                raise ValueError("participant_filter_json.employee_ids must be a non-empty list")
+            if not all(isinstance(x, str) and x.strip() for x in eids):
+                raise ValueError("participant_filter_json.employee_ids must be string ids")
+        return self
 
 
 class SurveyActionPlanOut(BaseModel):
@@ -290,6 +353,9 @@ class SurveyActionPlanOut(BaseModel):
     title: str
     description: str | None
     assignee_employee_id: str | None
+    owner_department_id: str | None
+    participant_scope: str
+    participant_filter_json: dict[str, Any] | None
     due_date: str | None
     status: str
     created_by: str | None

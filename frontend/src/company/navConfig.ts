@@ -34,6 +34,9 @@ const PAYROLL_CONFIGURE_ROLES = ['company_admin', 'compensation_analytics', 'hr_
 const BENEFITS_ROLES = ['company_admin', 'compensation_analytics', 'employee'] as const
 const BENEFITS_MANAGE_ROLES = ['company_admin', 'compensation_analytics'] as const
 
+const SURVEYS_ROLES = ['company_admin', 'compensation_analytics', 'hr_ops', 'employee'] as const
+const SURVEYS_HR_ROLES = ['company_admin', 'compensation_analytics', 'hr_ops'] as const
+
 export const COMPANY_NAV_DEF: NavItem[] = [
   { to: '', label: 'Dashboard', roles: ALL_MEMBERS },
   { to: 'my-profile', label: 'My profile', roles: ['employee'] },
@@ -69,7 +72,18 @@ export const COMPANY_NAV_DEF: NavItem[] = [
       { to: 'benefits?tab=myBenefits', label: 'My Benefits', roles: ['employee'] },
     ],
   },
-  { to: 'surveys', label: 'Engagement & Surveys', roles: ['company_admin', 'compensation_analytics', 'hr_ops', 'employee'] },
+  {
+    to: 'surveys',
+    label: 'Engagement & Surveys',
+    roles: [...SURVEYS_ROLES],
+    children: [
+      { to: 'surveys?tab=surveys', label: 'Surveys', roles: [...SURVEYS_ROLES] },
+      { to: 'surveys?tab=responses', label: 'Responses & Analysis', roles: [...SURVEYS_HR_ROLES] },
+      { to: 'surveys?tab=plans', label: 'Action Plans', roles: [...SURVEYS_HR_ROLES, 'employee'] },
+      { to: 'surveys?tab=trends', label: 'Satisfaction Trends', roles: [...SURVEYS_HR_ROLES] },
+      { to: 'surveys?tab=my', label: 'My Surveys', roles: ['employee'] },
+    ],
+  },
   { to: 'inbox', label: 'Inbox', roles: ALL_MEMBERS },
   { to: 'analytics', label: 'Analytics', roles: ['company_admin', 'compensation_analytics'] },
   { to: 'tracking', label: 'Tracking & score', roles: ALL_MEMBERS },

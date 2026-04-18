@@ -173,6 +173,13 @@ class SurveyActionPlan(Base):
     assignee_employee_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Owning department — members of this department see the plan in the employee app.
+    owner_department_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # all | department | grade | individual — who this action targets (participants).
+    participant_scope: Mapped[str] = mapped_column(String(32), default="all", nullable=False)
+    participant_filter_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     due_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # open | in_progress | done
     status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)

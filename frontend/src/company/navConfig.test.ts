@@ -63,6 +63,36 @@ describe('companyNavItems', () => {
     expect(payrollEmp?.children?.length).toBe(1)
     expect(payrollEmp?.children?.[0]?.label).toBe('Payslips')
   })
+
+  it('exposes Engagement & Surveys sub-items for HR vs employee', () => {
+    const admin = companyNavItems('co1', {
+      id: 'm1',
+      user_id: 'u1',
+      company_id: 'co1',
+      role: 'hr_ops',
+      status: 'active',
+      modules_access_json: null,
+    })
+    const eng = admin.find((n) => n.label === 'Engagement & Surveys')
+    expect(eng?.children?.map((c) => c.label)).toEqual([
+      'Surveys',
+      'Responses & Analysis',
+      'Action Plans',
+      'Satisfaction Trends',
+    ])
+    expect(eng?.children?.some((c) => c.to.includes('tab=responses'))).toBe(true)
+
+    const emp = companyNavItems('co1', {
+      id: 'm2',
+      user_id: 'u2',
+      company_id: 'co1',
+      role: 'employee',
+      status: 'active',
+      modules_access_json: null,
+    })
+    const engEmp = emp.find((n) => n.label === 'Engagement & Surveys')
+    expect(engEmp?.children?.map((c) => c.label)).toEqual(['Surveys', 'Action Plans', 'My Surveys'])
+  })
 })
 
 describe('canListAllActivityLogs', () => {

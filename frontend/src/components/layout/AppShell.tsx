@@ -36,6 +36,10 @@ function isChildNavActive(childTo: string, pathname: string, search: string, sib
       if (siblingTos.length === 1) return childTo === siblingTos[0]
       return childTab === 'plans'
     }
+    if (pathname.endsWith('/surveys')) {
+      if (siblingTos.length === 1) return childTo === siblingTos[0]
+      return childTab === 'surveys'
+    }
     return false
   } catch {
     return false
@@ -67,14 +71,20 @@ export function AppShell({ title, subtitle, companyName, navItems, topbarExtra, 
       }
       const siblingTos = children.map((c) => c.to)
       const hasActiveChild = children.some((c) => isChildNavActive(c.to, pathname, search, siblingTos))
-      const expanded = hasActiveChild || (openOverride[item.to] ?? false)
+      // Allow collapsing while a child route is active: explicit openOverride[parent] === false means "user collapsed".
+      const expanded = hasActiveChild ? openOverride[item.to] !== false : (openOverride[item.to] ?? false)
       return { kind: 'group' as const, item, siblingTos, hasActiveChild, expanded }
     })
   }, [navItems, pathname, search, openOverride])
 
   const toggleGroup = useCallback((parentTo: string, hasActiveChild: boolean) => {
-    if (hasActiveChild) return
-    setOpenOverride((o) => ({ ...o, [parentTo]: !(o[parentTo] ?? false) }))
+    setOpenOverride((o) => {
+      if (hasActiveChild) {
+        const isOpen = o[parentTo] !== false
+        return { ...o, [parentTo]: !isOpen }
+      }
+      return { ...o, [parentTo]: !(o[parentTo] ?? false) }
+    })
   }, [])
 
   return (
