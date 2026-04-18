@@ -20,7 +20,9 @@ To replace an old Tomato seed (e.g. after switching email domains), run with ``-
 - Departments: Fleet & Delivery, Technology, Operations, People & Culture, Customer Experience
 - Locations: Bengaluru HQ Hub, Remote / All-India
 - Job catalog: roles from delivery partner to engineering (with grade hints in ``level``)
-- Employees: 6 records with names/codes, departments, jobs, reporting line
+- Org positions: People & Culture (director, HRBP, TA, HR Executive) plus one slot per other
+  demo department (ops manager, fleet supervisor, delivery partner, two software engineers, CX agent)
+- Employees: 7 records with names/codes, departments, jobs, reporting line, and **org position_id** on each
 - Salary structures (SimCash): ``ctc_annual`` + ``bonus_pct_of_ctc`` per employee
 - Pay run: current calendar month, status ``draft``
 - Recruitment: approved requisition, open job posting, applications (offer stage + interview stage), one sent offer with SimCash compensation
@@ -49,6 +51,7 @@ from app.models.compensation_engagement import PayRun, SalaryStructure
 from app.models.employee import Employee
 from app.models.membership import CompanyMembership
 from app.models.org import Department, JobCatalogEntry, Location
+from app.models.position import Position
 from app.models.recruitment import Application, Interview, JobPosting, Offer, Requisition
 from app.models.user import User
 
@@ -218,6 +221,124 @@ def seed(*, force: bool = False) -> None:
         db.add_all([dept_fleet, dept_tech, dept_ops, dept_people, dept_cx])
         db.flush()
 
+        # --- Org chart positions (People & Culture only for demo payroll / designation) ---
+        pos_ppc_head = Position(
+            id=uuid_str(),
+            company_id=company.id,
+            name="Director, People & Culture",
+            department_id=dept_people.id,
+            bucket="none",
+            grade=12,
+            reports_to_id=None,
+            works_with_id=None,
+        )
+        pos_ppc_hrbp = Position(
+            id=uuid_str(),
+            company_id=company.id,
+            name="HR Business Partner",
+            department_id=dept_people.id,
+            bucket="none",
+            grade=28,
+            reports_to_id=pos_ppc_head.id,
+            works_with_id=None,
+        )
+        pos_ppc_ta = Position(
+            id=uuid_str(),
+            company_id=company.id,
+            name="Talent Acquisition Specialist",
+            department_id=dept_people.id,
+            bucket="none",
+            grade=32,
+            reports_to_id=pos_ppc_head.id,
+            works_with_id=None,
+        )
+        pos_ppc_hr_exec = Position(
+            id=uuid_str(),
+            company_id=company.id,
+            name="HR Executive",
+            department_id=dept_people.id,
+            bucket="none",
+            grade=45,
+            reports_to_id=pos_ppc_hrbp.id,
+            works_with_id=None,
+        )
+        # Other departments: one org position per seeded employee (payroll / designation demos)
+        pos_ops_manager = Position(
+            id=uuid_str(),
+            company_id=company.id,
+            name="Operations Manager",
+            department_id=dept_ops.id,
+            bucket="none",
+            grade=18,
+            reports_to_id=None,
+            works_with_id=None,
+        )
+        pos_fleet_supervisor = Position(
+            id=uuid_str(),
+            company_id=company.id,
+            name="Fleet Supervisor",
+            department_id=dept_fleet.id,
+            bucket="none",
+            grade=34,
+            reports_to_id=None,
+            works_with_id=None,
+        )
+        pos_delivery_partner = Position(
+            id=uuid_str(),
+            company_id=company.id,
+            name="Delivery Partner",
+            department_id=dept_fleet.id,
+            bucket="none",
+            grade=52,
+            reports_to_id=pos_fleet_supervisor.id,
+            works_with_id=None,
+        )
+        pos_swe_1 = Position(
+            id=uuid_str(),
+            company_id=company.id,
+            name="Software Engineer",
+            department_id=dept_tech.id,
+            bucket="none",
+            grade=38,
+            reports_to_id=None,
+            works_with_id=None,
+        )
+        pos_swe_2 = Position(
+            id=uuid_str(),
+            company_id=company.id,
+            name="Software Engineer",
+            department_id=dept_tech.id,
+            bucket="none",
+            grade=38,
+            reports_to_id=None,
+            works_with_id=None,
+        )
+        pos_cx_agent = Position(
+            id=uuid_str(),
+            company_id=company.id,
+            name="Customer Support Agent",
+            department_id=dept_cx.id,
+            bucket="none",
+            grade=48,
+            reports_to_id=None,
+            works_with_id=None,
+        )
+        db.add_all(
+            [
+                pos_ppc_head,
+                pos_ppc_hrbp,
+                pos_ppc_ta,
+                pos_ppc_hr_exec,
+                pos_ops_manager,
+                pos_fleet_supervisor,
+                pos_delivery_partner,
+                pos_swe_1,
+                pos_swe_2,
+                pos_cx_agent,
+            ]
+        )
+        db.flush()
+
         # --- Job catalog (positions) ---
         jobs_spec: list[tuple[str, str | None, str | None, str | None]] = [
             ("Delivery Partner", "Operations", "L2", "G2"),
@@ -253,6 +374,7 @@ def seed(*, force: bool = False) -> None:
             manager: Employee | None,
             hire: str,
             status: str = "active",
+            position_id: str | None = None,
         ) -> Employee:
             e = Employee(
                 id=uuid_str(),
@@ -261,6 +383,7 @@ def seed(*, force: bool = False) -> None:
                 employee_code=code,
                 department_id=dept.id,
                 job_id=job.id,
+                position_id=position_id,
                 manager_id=manager.id if manager else None,
                 location_id=loc_hq.id,
                 status=status,
@@ -280,6 +403,7 @@ def seed(*, force: bool = False) -> None:
             None,
             None,
             "2023-01-15",
+            position_id=pos_ops_manager.id,
         )
         db.flush()
 
@@ -291,6 +415,7 @@ def seed(*, force: bool = False) -> None:
             u_rider.id,
             e_priya,
             "2024-06-01",
+            position_id=pos_delivery_partner.id,
         )
         e_rahul = emp(
             "TOM-T01",
@@ -300,6 +425,7 @@ def seed(*, force: bool = False) -> None:
             u_dev.id,
             e_priya,
             "2023-09-10",
+            position_id=pos_swe_1.id,
         )
         e_anita = emp(
             "TOM-H01",
@@ -309,6 +435,7 @@ def seed(*, force: bool = False) -> None:
             None,
             e_priya,
             "2024-02-20",
+            position_id=pos_ppc_hr_exec.id,
         )
         e_vikram = emp(
             "TOM-F01",
@@ -318,6 +445,7 @@ def seed(*, force: bool = False) -> None:
             None,
             e_priya,
             "2023-11-05",
+            position_id=pos_fleet_supervisor.id,
         )
         e_kavita = emp(
             "TOM-C01",
@@ -327,6 +455,7 @@ def seed(*, force: bool = False) -> None:
             None,
             e_priya,
             "2025-01-08",
+            position_id=pos_cx_agent.id,
         )
         e_offer_new = emp(
             "TOM-P01",
@@ -337,6 +466,7 @@ def seed(*, force: bool = False) -> None:
             e_priya,
             "2026-05-01",
             status="onboarding",
+            position_id=pos_swe_2.id,
         )
         db.flush()
 
@@ -472,7 +602,8 @@ def seed(*, force: bool = False) -> None:
         print("\n  Candidate accounts (no company login; use for candidate flows / tests):")
         print(f"    {E_CAND_OFFERED}   -> application in offer stage")
         print(f"    {E_CAND_PIPELINE}  -> application in interview stage")
-        print("\n  Employees: 7 rows (incl. onboarding). Salary structures + draft pay run for current month.")
+        print("\n  Employees: 7 rows (incl. onboarding). Each has an org chart position_id.")
+        print("  Salary structures + draft pay run for current month.")
         print("  ATS: 1 approved requisition, 1 open posting, 2 applications, 1 interview, 1 sent offer.\n")
 
 

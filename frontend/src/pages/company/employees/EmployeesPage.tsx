@@ -3,9 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { createEmployee, listEmployees, type Employee } from '../../../api/employeesApi'
 import { apiFetch } from '../../../api/client'
 import { useAuth } from '../../../auth/AuthContext'
+import { listPositions, type Department, type Position } from '../../../api/organizationApi'
 import styles from '../CompanyWorkspacePage.module.css'
 
-type Dept = { id: string; name: string }
 type Job = { id: string; title: string }
 type SortField = 'employee_code' | 'status' | 'hire_date'
 
@@ -15,8 +15,9 @@ export function EmployeesPage() {
   const role = myCompanies.find((x) => x.company.id === companyId)?.membership.role ?? ''
   const canCreate = role === 'company_admin' || role === 'hr_ops'
   const [rows, setRows] = useState<Employee[]>([])
-  const [depts, setDepts] = useState<Dept[]>([])
+  const [depts, setDepts] = useState<Department[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [sortField, setSortField] = useState<SortField>('employee_code')
@@ -25,6 +26,7 @@ export function EmployeesPage() {
   const [status, setStatus] = useState('active')
   const [hireDate, setHireDate] = useState('')
   const [departmentId, setDepartmentId] = useState('')
+  const [positionId, setPositionId] = useState('')
   const [jobId, setJobId] = useState('')
   const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState(false)
@@ -37,7 +39,7 @@ export function EmployeesPage() {
     try {
       const [employees, departments, jobCatalog] = await Promise.all([
         listEmployees(companyId),
-        apiFetch<Dept[]>(`/companies/${companyId}/departments`),
+        apiFetch<Department[]>(`/companies/${companyId}/departments`),
         apiFetch<Job[]>(`/companies/${companyId}/job-catalog`),
       ])
       setRows(employees)
@@ -54,6 +56,25 @@ export function EmployeesPage() {
     void refresh()
   }, [companyId])
 
+  useEffect(() => {
+    if (!companyId || !departmentId) {
+      setPositions([])
+      setPositionId('')
+      return
+    }
+    let cancelled = false
+    void listPositions(companyId, departmentId)
+      .then((rows) => {
+        if (!cancelled) setPositions(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setPositions([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, departmentId])
+
   function onSort(next: SortField) {
     if (next === sortField) {
       setSortDir((v) => (v === 'asc' ? 'desc' : 'asc'))
@@ -69,17 +90,26 @@ export function EmployeesPage() {
     setPending(true)
     setError(null)
     try {
+      if (departmentId) {
+        if (positions.length > 0 && !positionId) {
+          setError('Select a position (designation) for this department, or add positions under Company → Org.')
+          setPending(false)
+          return
+        }
+      }
       await createEmployee(companyId, {
         employee_code: code,
         status,
         hire_date: hireDate || null,
         department_id: departmentId || null,
+        position_id: positionId || null,
         job_id: jobId || null,
       })
       setCode('EMP-')
       setStatus('active')
       setHireDate('')
       setDepartmentId('')
+      setPositionId('')
       setJobId('')
       await refresh()
     } catch (e) {
@@ -179,16 +209,54 @@ export function EmployeesPage() {
             <div className={styles.formRow}>
               <label className={styles.labelBlock}>
                 Department
-                <select className={styles.input} value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+                <select
+                  className={styles.input}
+                  value={departmentId}
+                  onChange={(e) => {
+                    setDepartmentId(e.target.value)
+                    setPositionId('')
+                  }}
+                >
                   <option value="">Unassigned</option>
-                  {depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  {depts.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className={styles.labelBlock}>
-                Job
+                Position (designation)
+                <select
+                  className={styles.input}
+                  value={positionId}
+                  onChange={(e) => setPositionId(e.target.value)}
+                  disabled={!departmentId}
+                >
+                  <option value="">{departmentId ? 'Select position' : 'Select a department first'}</option>
+                  {positions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {departmentId && positions.length === 0 ? (
+              <p className={styles.muted}>
+                No positions for this department yet. Create them under Company → Org chart / Positions.
+              </p>
+            ) : null}
+            <div className={styles.formRow}>
+              <label className={styles.labelBlock}>
+                Job catalog
                 <select className={styles.input} value={jobId} onChange={(e) => setJobId(e.target.value)}>
                   <option value="">Unassigned</option>
-                  {jobs.map((j) => <option key={j.id} value={j.id}>{j.title}</option>)}
+                  {jobs.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.title}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>

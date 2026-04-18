@@ -8,6 +8,7 @@ export type Employee = {
   employee_code: string
   department_id: string | null
   job_id: string | null
+  position_id: string | null
   manager_id: string | null
   location_id: string | null
   status: string
@@ -51,6 +52,7 @@ export function createEmployee(
     employee_code: string
     department_id?: string | null
     job_id?: string | null
+    position_id?: string | null
     manager_id?: string | null
     location_id?: string | null
     status?: string
@@ -71,6 +73,7 @@ export function updateEmployee(
     employee_code: string
     department_id: string | null
     job_id: string | null
+    position_id: string | null
     manager_id: string | null
     location_id: string | null
     status: string

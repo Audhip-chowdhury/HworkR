@@ -49,6 +49,7 @@ FIELD_KEYS = (
     "professional_tax",
     "tds",
     "loan_recovery",
+    "leave_deduction",
     "other_deductions",
     "total_deductions",
     "net",
@@ -73,6 +74,7 @@ class SimCashMonthly:
     professional_tax: float
     tds: float
     loan_recovery: float
+    leave_deduction: float
     other_deductions: float
     total_deductions: float
     net: float
@@ -124,6 +126,7 @@ def compute_monthly_breakdown(
     bonus_pct_of_ctc: float = 0.0625,
     *,
     loan_recovery_monthly: float = 0.0,
+    leave_deduction_monthly: float = 0.0,
     other_deductions_monthly: float = 0.0,
 ) -> SimCashMonthly:
     """
@@ -195,9 +198,10 @@ def compute_monthly_breakdown(
     tds_m = tds_annual / 12.0
 
     loan_m = max(0.0, float(loan_recovery_monthly))
+    leave_m = max(0.0, float(leave_deduction_monthly))
     other_m = max(0.0, float(other_deductions_monthly))
 
-    total_ded_m = _r2(pf_emp_m + esi_emp_m + pt_m + tds_m + loan_m + other_m)
+    total_ded_m = _r2(pf_emp_m + esi_emp_m + pt_m + tds_m + loan_m + leave_m + other_m)
     gross_m = g_annual / 12.0
     net_m = _r2(gross_m - total_ded_m)
 
@@ -218,6 +222,7 @@ def compute_monthly_breakdown(
         professional_tax=_r2(pt_m),
         tds=_r2(tds_m),
         loan_recovery=_r2(loan_m),
+        leave_deduction=_r2(leave_m),
         other_deductions=_r2(other_m),
         total_deductions=total_ded_m,
         net=net_m,
@@ -240,10 +245,76 @@ def breakdown_to_submitted_map(b: SimCashMonthly) -> dict[str, float]:
         "professional_tax": b.professional_tax,
         "tds": b.tds,
         "loan_recovery": b.loan_recovery,
+        "leave_deduction": b.leave_deduction,
         "other_deductions": b.other_deductions,
         "total_deductions": b.total_deductions,
         "net": b.net,
     }
+
+
+RECONCILIATION_FIELD_KEYS = ("headcount", "total_gross", "total_deductions", "total_net")
+
+
+def payslip_deductions_total(deductions_json: Any) -> float:
+    """Sum employee deductions from a payslip's deductions_json (prefer total_deductions when present)."""
+    if not deductions_json or not isinstance(deductions_json, dict):
+        return 0.0
+    d = deductions_json
+    td = d.get("total_deductions")
+    if isinstance(td, (int, float)):
+        return float(td)
+    if isinstance(td, str) and td.strip():
+        try:
+            return float(td)
+        except ValueError:
+            pass
+    s = 0.0
+    for k, v in d.items():
+        if k in ("total_deductions", "net"):
+            continue
+        if isinstance(v, (int, float)):
+            s += float(v)
+        elif isinstance(v, str) and v.strip():
+            try:
+                s += float(v)
+            except ValueError:
+                pass
+    return round(s + 1e-12, 2)
+
+
+def compare_reconciliation_submitted(
+    expected: dict[str, float],
+    submitted: dict[str, Any],
+    *,
+    tolerance: float = DEFAULT_TOLERANCE,
+) -> dict[str, bool]:
+    """Validate payroll reconciliation totals (practice exercise). headcount is exact integer match."""
+    out: dict[str, bool] = {}
+    for key in RECONCILIATION_FIELD_KEYS:
+        exp = expected.get(key)
+        if exp is None:
+            out[key] = False
+            continue
+        raw = submitted.get(key)
+        if key == "headcount":
+            try:
+                si = int(round(float(raw))) if raw is not None and raw != "" else None
+                ei = int(round(float(exp)))
+                out[key] = si == ei if si is not None else False
+            except (TypeError, ValueError):
+                out[key] = False
+            continue
+        try:
+            sf = float(raw) if raw is not None and raw != "" else None
+            ef = float(exp)
+        except (TypeError, ValueError):
+            out[key] = False
+            continue
+        if sf is None:
+            out[key] = False
+            continue
+        out[key] = abs(sf - ef) <= tolerance
+    return out
 
 
 def compare_submitted(
@@ -272,7 +343,7 @@ def compare_submitted(
 
 def normalize_submitted_numbers(submitted: dict[str, Any]) -> dict[str, float | None]:
     """Coerce form payload to floats for comparison."""
-    optional_zero = frozenset({"loan_recovery", "other_deductions"})
+    optional_zero = frozenset({"loan_recovery", "leave_deduction", "other_deductions"})
     out: dict[str, float | None] = {}
     for key in FIELD_KEYS:
         raw = submitted.get(key)

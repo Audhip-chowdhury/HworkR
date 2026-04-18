@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.api.deps import (
     require_company_admin_path,
     require_company_membership_path,
+    require_company_roles_path,
     require_platform_admin,
 )
 from app.core.security import get_password_hash
@@ -752,12 +753,15 @@ def create_position(
     return _position_to_out(r2.unique().scalar_one())
 
 
+_POSITION_GRADE_OPS = frozenset({"company_admin", "hr_ops", "compensation_analytics"})
+
+
 @router.patch("/{company_id}/positions/{position_id}", response_model=PositionOut)
 def update_position(
     company_id: str,
     position_id: str,
     body: PositionUpdate,
-    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_admin_path)],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_POSITION_GRADE_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> PositionOut:
     user, _ = ctx

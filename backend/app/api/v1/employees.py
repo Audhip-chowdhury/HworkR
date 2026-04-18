@@ -29,7 +29,7 @@ from app.services.integration_hooks import publish_domain_event_post_commit
 
 router = APIRouter(prefix="/companies/{company_id}/employees", tags=["employees"])
 
-_HR_ROLES = frozenset({"company_admin", "hr_ops"})
+_HR_ROLES = frozenset({"company_admin", "hr_ops", "compensation_analytics"})
 
 
 def _validate_employee_refs(

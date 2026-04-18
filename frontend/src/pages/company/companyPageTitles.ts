@@ -33,9 +33,9 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
     'hr-ops': { title: 'HR operations', subtitle: 'Leave, balances, attendance, holidays, and policy' },
     performance: { title: 'Performance', subtitle: 'Cycles, goals, assessments, PIPs' },
     learning: { title: 'Learning', subtitle: 'Courses, assignments, completions, skills' },
-    payroll: { title: 'Payroll', subtitle: 'Salary structures, pay runs, payslips' },
+    payroll: { title: 'Payroll', subtitle: 'Salary structures, grade bands, pay runs, reconciliation, payslips' },
     benefits: { title: 'Benefits', subtitle: 'Plans and enrollments' },
-    surveys: { title: 'Surveys', subtitle: 'Engagement surveys and responses' },
+    surveys: { title: 'Engagement & Surveys', subtitle: 'Pulse surveys, responses, action plans, and satisfaction trends' },
     inbox: { title: 'Inbox', subtitle: 'Tasks requiring your action' },
     analytics: { title: 'Analytics', subtitle: 'Company dashboard metrics' },
     tracking: {

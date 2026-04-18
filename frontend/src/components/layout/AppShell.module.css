@@ -83,6 +83,75 @@
   border-left-color: var(--color-secondary);
 }
 
+.navGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.navGroupLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.65rem 1.25rem;
+  margin: 0;
+  border: none;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.navGroupLabel:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.navGroupLabelActive {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-left-color: var(--color-secondary);
+}
+
+.navGroupCaret {
+  flex-shrink: 0;
+  margin-left: 0.35rem;
+  font-size: 0.65rem;
+  opacity: 0.9;
+}
+
+.navGroupChildren {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 0.25rem;
+}
+
+.navSubLink {
+  padding: 0.45rem 1.25rem 0.45rem 2rem;
+  color: rgba(255, 255, 255, 0.75);
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-left: 3px solid transparent;
+}
+
+.navSubLink:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.navSubLinkActive {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-left-color: var(--color-secondary);
+}
+
 .sidebarFooter {
   padding: 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.12);

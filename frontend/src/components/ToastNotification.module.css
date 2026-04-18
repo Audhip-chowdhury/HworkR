@@ -1,0 +1,108 @@
+.container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: 22rem;
+  width: calc(100vw - 3rem);
+  pointer-events: none;
+}
+
+.toast {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem 2.2rem 0.75rem 0.85rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.14);
+  overflow: hidden;
+  pointer-events: all;
+  background: #fff;
+  border: 1px solid var(--border, #e2e8f0);
+  animation: slideIn 0.22s ease;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.success { border-left: 4px solid #16a34a; }
+.info    { border-left: 4px solid #2563eb; }
+.error   { border-left: 4px solid #dc2626; }
+
+.icon {
+  flex-shrink: 0;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-top: 0.05rem;
+}
+
+.success .icon { background: #dcfce7; color: #16a34a; }
+.info    .icon { background: #dbeafe; color: #2563eb; }
+.error   .icon { background: #fee2e2; color: #dc2626; }
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #111;
+  line-height: 1.3;
+}
+
+.detail {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: #555;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.close {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #888;
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+}
+.close:hover { color: #222; background: rgba(0,0,0,0.06); }
+
+.progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  transform-origin: left;
+  animation: shrink linear forwards;
+}
+
+.success .progress { background: #16a34a; }
+.info    .progress { background: #2563eb; }
+.error   .progress { background: #dc2626; }
+
+@keyframes shrink {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}

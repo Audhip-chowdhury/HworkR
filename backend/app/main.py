@@ -14,6 +14,7 @@ from app.api.v1 import (
     certification,
     company_registration,
     compensation_engagement,
+    compensation_review,
     employees,
     exports,
     hr_ops,
@@ -79,6 +80,7 @@ v1.include_router(employees.router)
 v1.include_router(hr_ops.router)
 v1.include_router(performance_learning.router)
 v1.include_router(compensation_engagement.router)
+v1.include_router(compensation_review.router)
 v1.include_router(tracking.router)
 v1.include_router(certification.router)
 v1.include_router(analytics.router)

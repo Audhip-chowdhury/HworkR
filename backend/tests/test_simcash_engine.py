@@ -8,10 +8,12 @@ from fastapi.testclient import TestClient
 
 from app.services.simcash_engine import (
     breakdown_to_submitted_map,
+    compare_reconciliation_submitted,
     compare_submitted,
     compute_monthly_breakdown,
     normalize_submitted_numbers,
     parse_salary_components,
+    payslip_deductions_total,
 )
 
 
@@ -161,3 +163,21 @@ def test_engine_expected_multiple_structures_no_multiple_results_error():
             headers=_hdr(tok),
         )
         assert r.status_code == 200, r.text
+
+
+def test_payslip_deductions_total_prefers_total_deductions():
+    assert payslip_deductions_total({"pf_employee": 100, "total_deductions": 500.5}) == 500.5
+
+
+def test_compare_reconciliation_submitted():
+    exp = {"headcount": 3.0, "total_gross": 1000.0, "total_deductions": 200.0, "total_net": 800.0}
+    sub = {"headcount": 3, "total_gross": 1000.2, "total_deductions": 199.7, "total_net": 800.1}
+    cmp = compare_reconciliation_submitted(exp, sub)
+    assert cmp["headcount"] is True
+    assert cmp["total_gross"] is True
+    assert cmp["total_deductions"] is True
+    assert cmp["total_net"] is True
+    assert all(cmp.values())
+
+    bad = compare_reconciliation_submitted(exp, {**sub, "headcount": 2})
+    assert bad["headcount"] is False

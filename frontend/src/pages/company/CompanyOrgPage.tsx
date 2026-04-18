@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { apiFetch } from '../../api/client'
 import { useAuth, type Company } from '../../auth/AuthContext'
+import { listGradeBands, type CompensationGradeBand } from '../../api/compensationApi'
 import { OrgHierarchyTree, type PositionNode } from './OrgHierarchyTree'
 import styles from './CompanyWorkspacePage.module.css'
 
@@ -21,14 +22,17 @@ type Placement = 'department' | 'c_suite' | 'temporary'
 export function CompanyOrgPage() {
   const { companyId = '' } = useParams()
   const { myCompanies } = useAuth()
+  const navigate = useNavigate()
   const entry = myCompanies.find((x) => x.company.id === companyId)
   const isAdmin = entry?.membership.role === 'company_admin'
 
   const [company, setCompany] = useState<Company | null>(null)
   const [depts, setDepts] = useState<Dept[]>([])
   const [positions, setPositions] = useState<Position[]>([])
+  const [gradeBands, setGradeBands] = useState<CompensationGradeBand[]>([])
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [restoredNotice, setRestoredNotice] = useState(false)
 
   const [deptName, setDeptName] = useState('')
 
@@ -36,7 +40,7 @@ export function CompanyOrgPage() {
   const [posName, setPosName] = useState('')
   const [placement, setPlacement] = useState<Placement>('department')
   const [departmentId, setDepartmentId] = useState('')
-  const [grade, setGrade] = useState(50)
+  const [grade, setGrade] = useState('')
   const [reportsToId, setReportsToId] = useState('')
   const [worksWithId, setWorksWithId] = useState('')
 
@@ -46,12 +50,14 @@ export function CompanyOrgPage() {
     try {
       const c = await apiFetch<Company>(`/companies/${companyId}`)
       setCompany(c)
-      const [d, pos] = await Promise.all([
+      const [d, pos, bands] = await Promise.all([
         apiFetch<Dept[]>(`/companies/${companyId}/departments`),
         apiFetch<Position[]>(`/companies/${companyId}/positions`),
+        listGradeBands(companyId).catch(() => [] as CompensationGradeBand[]),
       ])
       setDepts(d)
       setPositions(pos)
+      setGradeBands(bands)
       setDepartmentId((prev) => prev || d[0]?.id || '')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load')
@@ -62,11 +68,30 @@ export function CompanyOrgPage() {
     void refresh()
   }, [companyId])
 
+  useEffect(() => {
+    if (!companyId) return
+    const key = `hworkr_pending_position_${companyId}`
+    const saved = sessionStorage.getItem(key)
+    if (!saved) return
+    try {
+      const s = JSON.parse(saved) as { posName?: string; placement?: Placement; departmentId?: string; reportsToId?: string; worksWithId?: string }
+      if (s.posName) setPosName(s.posName)
+      if (s.placement) setPlacement(s.placement)
+      if (s.departmentId) setDepartmentId(s.departmentId)
+      if (s.reportsToId) setReportsToId(s.reportsToId)
+      if (s.worksWithId) setWorksWithId(s.worksWithId)
+      setRestoredNotice(true)
+    } catch {
+      // ignore malformed
+    }
+    sessionStorage.removeItem(key)
+  }, [companyId])
+
   function resetPositionForm() {
     setEditingId(null)
     setPosName('')
     setPlacement('department')
-    setGrade(50)
+    setGrade('')
     setReportsToId('')
     setWorksWithId('')
     setDepartmentId(depts[0]?.id ?? '')
@@ -79,7 +104,7 @@ export function CompanyOrgPage() {
   function startEdit(p: Position) {
     setEditingId(p.id)
     setPosName(p.name)
-    setGrade(p.grade)
+    setGrade(String(p.grade))
     setReportsToId(p.reports_to_id ?? '')
     setWorksWithId(p.works_with_id ?? '')
     if (p.bucket === 'c_suite') {
@@ -105,7 +130,7 @@ export function CompanyOrgPage() {
     try {
       const base = {
         name,
-        grade: Number(grade),
+        grade: Number(grade) || 0,
         reports_to_id: reportsToId || null,
         works_with_id: worksWithId || null,
       }
@@ -204,6 +229,13 @@ export function CompanyOrgPage() {
   return (
     <>
       {error ? <p className={styles.error}>{error}</p> : null}
+
+      {restoredNotice ? (
+        <div style={{ margin: '0 0 1rem', padding: '0.65rem 1rem', background: '#fff8e1', border: '1px solid #f59e0b', borderRadius: 6, fontSize: '0.875rem', color: '#92400e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+          <span>Position form restored — select the grade you just configured from Grade Structure, then submit.</span>
+          <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '1rem', color: '#92400e', lineHeight: 1 }} onClick={() => setRestoredNotice(false)} aria-label="Dismiss">×</button>
+        </div>
+      ) : null}
 
       <div className={styles.orgLayout}>
         <div className={styles.orgMain}>
@@ -305,15 +337,32 @@ export function CompanyOrgPage() {
                   </label>
                 ) : null}
                 <label className={styles.labelBlock}>
-                  Grade (lower = more senior)
-                  <input
+                  Grade
+                  <select
                     className={styles.input}
-                    type="number"
-                    min={0}
-                    max={999999}
                     value={grade}
-                    onChange={(e) => setGrade(Number(e.target.value))}
-                  />
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (val === '__new__') {
+                        sessionStorage.setItem(
+                          `hworkr_pending_position_${companyId}`,
+                          JSON.stringify({ posName, placement, departmentId, reportsToId, worksWithId }),
+                        )
+                        navigate(`/company/${companyId}/payroll?tab=grades&returnTo=org`)
+                        return
+                      }
+                      setGrade(val)
+                    }}
+                    required
+                  >
+                    <option value="">Select grade</option>
+                    {[...new Set(gradeBands.map((b) => b.org_position_grade_min).filter((g) => g != null))].sort((a, b) => a - b).map((g) => (
+                      <option key={g} value={String(g)}>
+                        Grade {g}
+                      </option>
+                    ))}
+                    <option value="__new__">+ Create new grade in Grade Structure →</option>
+                  </select>
                 </label>
                 <label className={styles.labelBlock}>
                   Reports to

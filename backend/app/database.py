@@ -35,6 +35,11 @@ def init_db() -> None:
         _sqlite_add_column_if_missing("employees", "position_id", "VARCHAR(36)")
         _sqlite_add_column_if_missing("payslips", "earnings_json", "TEXT")
         _sqlite_add_column_if_missing("pay_runs", "department_id", "VARCHAR(36)")
+        _sqlite_add_column_if_missing("surveys", "survey_type", "VARCHAR(32)")
+        _sqlite_add_column_if_missing("benefits_enrollments", "updated_at", "TIMESTAMP")
+        _sqlite_add_column_if_missing("pay_runs", "run_kind", "VARCHAR(32) DEFAULT 'regular'")
+        _sqlite_add_column_if_missing("pay_runs", "pay_date", "VARCHAR(32)")
+        _sqlite_add_column_if_missing("pay_runs", "run_label", "VARCHAR(255)")
 
     with SessionLocal() as session:
         _seed_platform_admin(session)
