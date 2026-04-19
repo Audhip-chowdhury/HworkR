@@ -36,7 +36,8 @@ export function CompanyLayout() {
     const preserveQuery =
       location.pathname.includes('/employees/') ||
       location.pathname.includes('/leave/') ||
-      location.pathname.includes('/audits/')
+      location.pathname.includes('/audits/') ||
+      location.pathname.includes('/learning/')
     const suffix = preserveQuery ? location.search : ''
     return raw.map((item) => {
       if (item.kind === 'group') {
@@ -44,7 +45,8 @@ export function CompanyLayout() {
           item.parentTo &&
           (item.parentTo.includes('/employees/') ||
             item.parentTo.includes('/leave/') ||
-            item.parentTo.includes('/audits/'))
+            item.parentTo.includes('/audits/') ||
+            item.parentTo.includes('/learning/'))
             ? `${item.parentTo.split('?')[0]}${suffix}`
             : item.parentTo
         return {
@@ -53,7 +55,10 @@ export function CompanyLayout() {
           children: item.children.map((c) => ({
             ...c,
             to:
-              c.to.includes('/employees/') || c.to.includes('/leave/') || c.to.includes('/audits/')
+              c.to.includes('/employees/') ||
+              c.to.includes('/leave/') ||
+              c.to.includes('/audits/') ||
+              c.to.includes('/learning/')
                 ? `${c.to.split('?')[0]}${suffix}`
                 : c.to,
           })),

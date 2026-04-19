@@ -9,11 +9,13 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
         ? `employees/${parts[1]}`
         : parts[0] === 'leave' && parts[1]
           ? `leave/${parts[1]}`
-          : parts[0] === 'audits' && parts[1] === 'policies' && parts[2] === 'publish'
-            ? 'audits/policies/publish'
-            : parts[0] === 'audits' && parts[1]
-              ? `audits/${parts[1]}`
-              : parts[0] || 'dashboard'
+          : parts[0] === 'learning' && parts[1]
+            ? `learning/${parts[1]}`
+            : parts[0] === 'audits' && parts[1] === 'policies' && parts[2] === 'publish'
+              ? 'audits/policies/publish'
+              : parts[0] === 'audits' && parts[1]
+                ? `audits/${parts[1]}`
+                : parts[0] || 'dashboard'
 
   const map: Record<string, { title: string; subtitle?: string }> = {
     dashboard: {
@@ -79,7 +81,22 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
     members: { title: 'Members', subtitle: 'Company membership administration' },
     'hr-ops': { title: 'HR operations', subtitle: 'Leave, balances, attendance, holidays, and policy' },
     performance: { title: 'Performance', subtitle: 'Cycles, goals, assessments, PIPs' },
-    learning: { title: 'Learning', subtitle: 'Courses, assignments, completions, skills' },
+    learning: {
+      title: 'Learning and Development',
+      subtitle: 'Training courses, assignments, and scores',
+    },
+    'learning/assignments': {
+      title: 'Training assignment',
+      subtitle: 'Assigned courses, watch training videos, and completion status',
+    },
+    'learning/catalog': {
+      title: 'Course catalog management',
+      subtitle: 'Create courses and assign them to all employees',
+    },
+    'learning/scores': {
+      title: 'Training scores',
+      subtitle: 'Per-course employee scores and completion tracking',
+    },
     payroll: { title: 'Payroll', subtitle: 'Salary structures, pay runs, payslips' },
     benefits: { title: 'Benefits', subtitle: 'Plans and enrollments' },
     surveys: { title: 'Surveys', subtitle: 'Engagement surveys and responses' },

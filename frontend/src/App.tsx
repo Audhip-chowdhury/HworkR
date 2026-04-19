@@ -38,7 +38,10 @@ import { EmployeeDetailPage } from './pages/company/employees/EmployeeDetailPage
 import { MembersPage } from './pages/company/members/MembersPage'
 import { HrOpsPage } from './pages/company/hr-ops/HrOpsPage'
 import { PerformancePage } from './pages/company/performance/PerformancePage'
-import { LearningPage } from './pages/company/learning/LearningPage'
+import { LearningDevelopmentLayout } from './pages/company/learning/LearningDevelopmentLayout'
+import { CourseCatalogPage } from './pages/company/learning/CourseCatalogPage'
+import { TrainingAssignmentsPage } from './pages/company/learning/TrainingAssignmentsPage'
+import { TrainingScoresPage } from './pages/company/learning/TrainingScoresPage'
 import { PayrollPage } from './pages/company/payroll/PayrollPage'
 import { BenefitsPage } from './pages/company/benefits/BenefitsPage'
 import { SurveysPage } from './pages/company/surveys/SurveysPage'
@@ -155,7 +158,12 @@ export default function App() {
         <Route path="recruitment/offers" element={<OffersPage />} />
         <Route path="recruitment/candidate-portal" element={<CandidatePortalPage />} />
         <Route path="performance" element={<PerformancePage />} />
-        <Route path="learning" element={<LearningPage />} />
+        <Route path="learning" element={<LearningDevelopmentLayout />}>
+          <Route index element={<Navigate to="assignments" replace />} />
+          <Route path="assignments" element={<TrainingAssignmentsPage />} />
+          <Route path="catalog" element={<CourseCatalogPage />} />
+          <Route path="scores" element={<TrainingScoresPage />} />
+        </Route>
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="benefits" element={<BenefitsPage />} />
         <Route path="surveys" element={<SurveysPage />} />

@@ -60,6 +60,8 @@ export type Course = {
   prerequisites_json: unknown
   content_url: string | null
   mandatory: boolean
+  points: number
+  due_date: string | null
   created_at: string
 }
 
@@ -72,6 +74,39 @@ export type TrainingAssignment = {
   due_date: string | null
   status: string
   created_at: string
+}
+
+export type TrainingAssignmentEnriched = {
+  id: string
+  company_id: string
+  employee_id: string
+  course_id: string
+  assigned_by: string | null
+  due_date: string | null
+  status: string
+  created_at: string
+  course_title: string
+  course_points: number
+  youtube_url: string | null
+  completion_score: number | null
+  completed_at: string | null
+  display_status: string
+  overdue_before_due: boolean
+}
+
+export type CourseEmployeeScoreRow = {
+  employee_id: string
+  employee_code: string | null
+  display_name: string
+  score: number
+  status_label: string
+  overdue_before_due: boolean
+  didnt_attend: boolean
+}
+
+export type LearningEmployeeSuggestion = {
+  employee_id: string
+  label: string
 }
 
 export type TrainingCompletion = {
@@ -143,6 +178,8 @@ export type CourseCreate = {
   prerequisites_json?: unknown
   content_url?: string | null
   mandatory?: boolean
+  points?: number
+  due_date?: string | null
 }
 
 export type TrainingAssignmentCreate = {
@@ -181,7 +218,28 @@ export const listCourses = (companyId: string) =>
 export const createCourse = (companyId: string, body: CourseCreate) =>
   apiFetch<Course>(companyPath(companyId, '/learning/courses'), { method: 'POST', json: body })
 export const listAssignments = (companyId: string, employee_id?: string) =>
-  apiFetch<TrainingAssignment[]>(companyPath(companyId, `/learning/training-assignments${employee_id ? `?employee_id=${encodeURIComponent(employee_id)}` : ''}`))
+  apiFetch<TrainingAssignmentEnriched[]>(
+    companyPath(companyId, `/learning/training-assignments${employee_id ? `?employee_id=${encodeURIComponent(employee_id)}` : ''}`),
+  )
+
+export const listCourseEmployeeScores = (
+  companyId: string,
+  courseId: string,
+  params?: { employee_q?: string; employee_id?: string },
+) => {
+  const sp = new URLSearchParams()
+  if (params?.employee_q) sp.set('employee_q', params.employee_q)
+  if (params?.employee_id) sp.set('employee_id', params.employee_id)
+  const qs = sp.toString()
+  return apiFetch<CourseEmployeeScoreRow[]>(
+    companyPath(companyId, `/learning/courses/${encodeURIComponent(courseId)}/employee-scores${qs ? `?${qs}` : ''}`),
+  )
+}
+
+export const learningEmployeeSuggestions = (companyId: string, q: string) =>
+  apiFetch<LearningEmployeeSuggestion[]>(
+    companyPath(companyId, `/learning/employee-suggestions?q=${encodeURIComponent(q)}`),
+  )
 export const createAssignment = (companyId: string, body: TrainingAssignmentCreate) =>
   apiFetch<TrainingAssignment>(companyPath(companyId, '/learning/training-assignments'), { method: 'POST', json: body })
 export const createCompletion = (companyId: string, body: TrainingCompletionCreate) =>

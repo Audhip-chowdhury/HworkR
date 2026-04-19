@@ -95,7 +95,25 @@ export const COMPANY_NAV_DEF: NavDefItem[] = [
   { to: 'workflows', label: 'Workflows', roles: WF_ROLES },
   { to: 'recruitment', label: 'Recruitment', roles: ALL_MEMBERS },
   { to: 'performance', label: 'Performance', roles: ['company_admin', 'ld_performance', 'employee'] },
-  { to: 'learning', label: 'Learning', roles: ['company_admin', 'ld_performance', 'employee'] },
+  {
+    type: 'group',
+    label: 'Learning and Development',
+    parentTo: 'learning/assignments',
+    roles: ALL_MEMBERS,
+    children: [
+      { to: 'learning/assignments', label: 'Training assignment' },
+      {
+        to: 'learning/catalog',
+        label: 'Course catalog management',
+        roles: ['company_admin', 'hr_ops', 'ld_performance', 'talent_acquisition', 'compensation_analytics'],
+      },
+      {
+        to: 'learning/scores',
+        label: 'Training scores',
+        roles: ['company_admin', 'hr_ops', 'ld_performance', 'talent_acquisition', 'compensation_analytics'],
+      },
+    ],
+  },
   { to: 'payroll', label: 'Payroll', roles: ['company_admin', 'compensation_analytics', 'employee'] },
   { to: 'benefits', label: 'Benefits', roles: ['company_admin', 'compensation_analytics', 'employee'] },
   { to: 'surveys', label: 'Surveys', roles: ['company_admin', 'compensation_analytics', 'employee'] },
