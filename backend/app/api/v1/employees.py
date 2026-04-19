@@ -14,6 +14,7 @@ from app.models.lifecycle import EmployeeLifecycleEvent
 from app.models.membership import CompanyMembership
 from app.models.org import Department, JobCatalogEntry, Location
 from app.models.position import Position
+from app.models.position import Position
 from app.models.user import User
 from app.models.employee_document import EmployeeDocument
 from app.schemas.employees import (
@@ -58,7 +59,7 @@ from app.services.integration_hooks import publish_domain_event_post_commit
 
 router = APIRouter(prefix="/companies/{company_id}/employees", tags=["employees"])
 
-_HR_ROLES = frozenset({"company_admin", "hr_ops"})
+_HR_ROLES = frozenset({"company_admin", "hr_ops", "compensation_analytics"})
 _MY_GOALS_ACCESS_ROLES = frozenset({"employee", "hr_ops"})
 _HR_OR_BROADER = frozenset(
     {"company_admin", "hr_ops", "talent_acquisition", "ld_performance", "compensation_analytics"}
@@ -306,6 +307,18 @@ def _validate_employee_refs(
         mgr = get_employee_by_id(db, company_id, data["manager_id"])
         if mgr is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Manager employee not found")
+    if data.get("position_id"):
+        pos = db.execute(
+            select(Position).where(Position.id == data["position_id"], Position.company_id == company_id)
+        ).scalar_one_or_none()
+        if pos is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Position not found")
+        dep_id = data.get("department_id")
+        if dep_id and pos.department_id and pos.department_id != dep_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Position does not belong to the selected department",
+            )
     if data.get("position_id"):
         pos = db.execute(
             select(Position).where(Position.id == data["position_id"], Position.company_id == company_id)

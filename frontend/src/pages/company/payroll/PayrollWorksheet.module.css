@@ -1,0 +1,201 @@
+/* Professional SimCash salary worksheet (document-style) */
+
+.sheet {
+  position: relative;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 1.5rem 1.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0.45;
+  background: repeating-linear-gradient(
+    -32deg,
+    transparent,
+    transparent 14px,
+    rgba(128, 128, 128, 0.04) 14px,
+    rgba(128, 128, 128, 0.04) 15px
+  );
+}
+
+.sheetInner {
+  position: relative;
+  z-index: 1;
+}
+
+.docTitle {
+  margin: 0 0 0.25rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-primary);
+}
+
+.docSubtitle {
+  margin: 0 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.5rem 1.5rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.metaLabel {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.metaValue {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th,
+.table td {
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.table th {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.table th.engineCol {
+  font-weight: 500;
+  color: var(--text-muted);
+  opacity: 0.9;
+}
+
+.sectionRow td {
+  padding-top: 1rem;
+  padding-bottom: 0.35rem;
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-primary);
+  border-bottom: none;
+  background: transparent;
+}
+
+.sectionRow.employer td {
+  color: var(--text-muted);
+}
+
+.rowLabel {
+  min-width: 200px;
+}
+
+.inputCell {
+  min-width: 140px;
+}
+
+.engineCell {
+  min-width: 120px;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+.engineValue {
+  display: block;
+  padding: 0.35rem 0;
+}
+
+.engineLoading {
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.engineEmpty {
+  opacity: 0.4;
+}
+
+.netRow td {
+  border-top: 2px solid var(--border);
+  font-weight: 700;
+  font-size: 1rem;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+.input {
+  width: 100%;
+  max-width: 160px;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-card);
+}
+
+.inputSimOk {
+  border-color: #15803d;
+  box-shadow: 0 0 0 1px rgba(21, 128, 61, 0.2);
+}
+
+.inputSimBad {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.15);
+}
+
+.employerNote {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.toggleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}

@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../../../auth/AuthContext'
+import { apiFetch } from '../../../api/client'
 import {
+  createEmployee,
   getEmployeeDetail,
   listEmployeeSummaries,
   listLifecycleEvents,
@@ -10,8 +13,10 @@ import {
   type LifecycleEvent,
 } from '../../../api/employeesApi'
 import { EmployeeHrPanels } from './EmployeeHrPanels'
+import { listPositions, type Department, type Position } from '../../../api/organizationApi'
 import styles from '../CompanyWorkspacePage.module.css'
 
+type JobRow = { id: string; title: string }
 type EmergencyRow = { name: string; phone: string; relation: string }
 
 function docLabel(docType: string): string {
@@ -71,6 +76,9 @@ function EmployeesPage({ variant }: EmployeesPageProps) {
   const { companyId = '' } = useParams<{ companyId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedId = searchParams.get('id') ?? ''
+  const { myCompanies } = useAuth()
+  const role = myCompanies.find((x) => x.company.id === companyId)?.membership.role ?? ''
+  const canCreate = role === 'company_admin' || role === 'hr_ops'
 
   const [summaries, setSummaries] = useState<EmployeeSummary[]>([])
   const [detail, setDetail] = useState<EmployeeDetail | null>(null)
@@ -80,22 +88,40 @@ function EmployeesPage({ variant }: EmployeesPageProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [lifecycleEvents, setLifecycleEvents] = useState<LifecycleEvent[]>([])
   const [lifecycleLoading, setLifecycleLoading] = useState(false)
-
   const [q, setQ] = useState('')
 
-  async function refreshList() {
+  const [depts, setDepts] = useState<Department[]>([])
+  const [jobs, setJobs] = useState<JobRow[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
+  const [code, setCode] = useState('EMP-')
+  const [status, setStatus] = useState('active')
+  const [hireDate, setHireDate] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
+  const [positionId, setPositionId] = useState('')
+  const [jobId, setJobId] = useState('')
+  const [pending, setPending] = useState(false)
+
+  const refreshList = useCallback(async () => {
     if (!companyId) return
     setListLoading(true)
     setError(null)
     try {
       const sum = await listEmployeeSummaries(companyId)
       setSummaries(sum)
+      if (canCreate) {
+        const [departments, jobCatalog] = await Promise.all([
+          apiFetch<Department[]>(`/companies/${companyId}/departments`),
+          apiFetch<JobRow[]>(`/companies/${companyId}/job-catalog`),
+        ])
+        setDepts(departments)
+        setJobs(jobCatalog)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load employees')
     } finally {
       setListLoading(false)
     }
-  }
+  }, [companyId, canCreate])
 
   const loadDetail = useCallback(
     async (id: string) => {
@@ -120,12 +146,31 @@ function EmployeesPage({ variant }: EmployeesPageProps) {
 
   useEffect(() => {
     void refreshList()
-  }, [companyId])
+  }, [refreshList])
 
   useEffect(() => {
     if (selectedId) void loadDetail(selectedId)
     else setDetail(null)
   }, [selectedId, loadDetail])
+
+  useEffect(() => {
+    if (!companyId || !departmentId) {
+      setPositions([])
+      setPositionId('')
+      return
+    }
+    let cancelled = false
+    void listPositions(companyId, departmentId)
+      .then((rows) => {
+        if (!cancelled) setPositions(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setPositions([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, departmentId])
 
   useEffect(() => {
     if (variant !== 'lifecycle' || !companyId || !selectedId) {
@@ -142,6 +187,41 @@ function EmployeesPage({ variant }: EmployeesPageProps) {
 
   function selectEmployee(id: string) {
     setSearchParams(id ? { id } : {})
+  }
+
+  async function onCreate(e: FormEvent) {
+    e.preventDefault()
+    if (!companyId || !canCreate) return
+    setPending(true)
+    setError(null)
+    try {
+      if (departmentId) {
+        if (positions.length > 0 && !positionId) {
+          setError('Select a position (designation) for this department, or add positions under Company → Org.')
+          setPending(false)
+          return
+        }
+      }
+      await createEmployee(companyId, {
+        employee_code: code,
+        status,
+        hire_date: hireDate || null,
+        department_id: departmentId || null,
+        position_id: positionId || null,
+        job_id: jobId || null,
+      })
+      setCode('EMP-')
+      setStatus('active')
+      setHireDate('')
+      setDepartmentId('')
+      setPositionId('')
+      setJobId('')
+      await refreshList()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create employee')
+    } finally {
+      setPending(false)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -238,156 +318,219 @@ function EmployeesPage({ variant }: EmployeesPageProps) {
 
                 {variant === 'profile' ? (
                   <>
-                <div className={styles.employeesSection}>
-                  <h5 className={styles.employeesSectionHeading}>Personal info</h5>
-                  <ReadOnlyDetail label="Full name" value={dash(String((detail.personal_info_json as Record<string, unknown> | null)?.fullName ?? detail.display_name))} />
-                  <ReadOnlyDetail
-                    label="Date of birth"
-                    value={dash(String((detail.personal_info_json as Record<string, unknown> | null)?.dob ?? '').slice(0, 10))}
-                  />
-                  <ReadOnlyDetail
-                    label="Personal email"
-                    value={dash(String((detail.personal_info_json as Record<string, unknown> | null)?.personalEmail ?? ''))}
-                  />
-                  <ReadOnlyDetail label="Contact" value={dash(String((detail.personal_info_json as Record<string, unknown> | null)?.phone ?? ''))} />
-                  <ReadOnlyDetail
-                    label="Address"
-                    value={dash(String((detail.personal_info_json as Record<string, unknown> | null)?.address ?? ''))}
-                  />
-                  <div className={styles.hint} style={{ marginTop: '0.75rem' }}>
-                    Emergency contacts
-                  </div>
-                  {parseEmergencyContacts((detail.personal_info_json ?? null) as Record<string, unknown> | null).length === 0 ? (
-                    <p className={styles.muted}>—</p>
-                  ) : (
-                    <ul className={styles.ul} style={{ marginTop: '0.35rem' }}>
-                      {parseEmergencyContacts((detail.personal_info_json ?? null) as Record<string, unknown> | null).map((row, i) => (
-                        <li key={i}>
-                          {dash(row.name)}
-                          {row.phone ? ` · ${row.phone}` : ''}
-                          {row.relation ? ` (${row.relation})` : ''}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                    <div className={styles.employeesSection}>
+                      <h5 className={styles.employeesSectionHeading}>Personal info</h5>
+                      <ReadOnlyDetail
+                        label="Full name"
+                        value={dash(String((detail.personal_info_json as Record<string, unknown> | null)?.fullName ?? detail.display_name))}
+                      />
+                      <ReadOnlyDetail
+                        label="Date of birth"
+                        value={dash(String((detail.personal_info_json as Record<string, unknown> | null)?.dob ?? '').slice(0, 10))}
+                      />
+                      <ReadOnlyDetail
+                        label="Personal email"
+                        value={dash(String((detail.personal_info_json as Record<string, unknown> | null)?.personalEmail ?? ''))}
+                      />
+                      <ReadOnlyDetail label="Contact" value={dash(String((detail.personal_info_json as Record<string, unknown> | null)?.phone ?? ''))} />
+                      <ReadOnlyDetail
+                        label="Address"
+                        value={dash(String((detail.personal_info_json as Record<string, unknown> | null)?.address ?? ''))}
+                      />
+                      <div className={styles.hint} style={{ marginTop: '0.75rem' }}>
+                        Emergency contacts
+                      </div>
+                      {parseEmergencyContacts((detail.personal_info_json ?? null) as Record<string, unknown> | null).length === 0 ? (
+                        <p className={styles.muted}>—</p>
+                      ) : (
+                        <ul className={styles.ul} style={{ marginTop: '0.35rem' }}>
+                          {parseEmergencyContacts((detail.personal_info_json ?? null) as Record<string, unknown> | null).map((row, i) => (
+                            <li key={i}>
+                              {dash(row.name)}
+                              {row.phone ? ` · ${row.phone}` : ''}
+                              {row.relation ? ` (${row.relation})` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
 
-                <div className={styles.employeesSection}>
-                  <h5 className={styles.employeesSectionHeading}>Job info</h5>
-                  <ReadOnlyDetail label="Title" value={dash(detail.job_title)} />
-                  <ReadOnlyDetail label="Grade" value={dash(detail.job_grade)} />
-                  <ReadOnlyDetail label="Department" value={dash(detail.department_name)} />
-                  <ReadOnlyDetail label="Manager" value={dash(detail.manager_name)} />
-                  <ReadOnlyDetail label="Location" value={dash(detail.location_name)} />
-                  <ReadOnlyDetail label="Employment status" value={dash(detail.status)} />
-                  <ReadOnlyDetail label="Start date" value={dash(detail.hire_date)} />
-                </div>
+                    <div className={styles.employeesSection}>
+                      <h5 className={styles.employeesSectionHeading}>Job info</h5>
+                      <ReadOnlyDetail label="Title" value={dash(detail.job_title)} />
+                      <ReadOnlyDetail label="Grade" value={dash(detail.job_grade)} />
+                      <ReadOnlyDetail label="Department" value={dash(detail.department_name)} />
+                      <ReadOnlyDetail label="Manager" value={dash(detail.manager_name)} />
+                      <ReadOnlyDetail label="Location" value={dash(detail.location_name)} />
+                      <ReadOnlyDetail label="Employment status" value={dash(detail.status)} />
+                      <ReadOnlyDetail label="Start date" value={dash(detail.hire_date)} />
+                    </div>
 
-                <div className={styles.employeesSection}>
-                  <h5 className={styles.employeesSectionHeading}>Document management</h5>
-                  <div className={styles.tableWrap}>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th>Document</th>
-                          <th>Status</th>
-                          <th>File</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.documents.length === 0 ? (
-                          <tr>
-                            <td colSpan={3} className={styles.muted}>
-                              No document rows.
-                            </td>
-                          </tr>
-                        ) : (
-                          detail.documents.map((doc) => {
-                            const kind = docActionKind(doc)
-                            return (
-                              <tr key={doc.id}>
-                                <td>{docLabel(doc.doc_type)}</td>
-                                <td>{doc.status === 'submitted' ? 'Submitted' : 'Not submitted'}</td>
-                                <td>
-                                  {kind === 'image' && doc.file_url ? (
-                                    <a
-                                      href={doc.file_url}
-                                      className={styles.docLink}
-                                      onClick={(e) => {
-                                        e.preventDefault()
-                                        setPreviewUrl(doc.file_url)
-                                      }}
-                                    >
-                                      View
-                                    </a>
-                                  ) : kind === 'pdf' && doc.file_url ? (
-                                    <a
-                                      href={doc.file_url}
-                                      className={styles.docLink}
-                                      download
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      Download
-                                    </a>
-                                  ) : (
-                                    <span className={styles.muted}>—</span>
-                                  )}
+                    <div className={styles.employeesSection}>
+                      <h5 className={styles.employeesSectionHeading}>Document management</h5>
+                      <div className={styles.tableWrap}>
+                        <table className={styles.table}>
+                          <thead>
+                            <tr>
+                              <th>Document</th>
+                              <th>Status</th>
+                              <th>File</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detail.documents.length === 0 ? (
+                              <tr>
+                                <td colSpan={3} className={styles.muted}>
+                                  No document rows.
                                 </td>
                               </tr>
-                            )
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  <p className={styles.hint}>
-                    Employees see tasks in Inbox when a document is not submitted and their record is linked to a user account.
-                    Uploads are done from My profile.
-                  </p>
-                </div>
+                            ) : (
+                              detail.documents.map((doc) => {
+                                const kind = docActionKind(doc)
+                                return (
+                                  <tr key={doc.id}>
+                                    <td>{docLabel(doc.doc_type)}</td>
+                                    <td>{doc.status === 'submitted' ? 'Submitted' : 'Not submitted'}</td>
+                                    <td>
+                                      {kind === 'image' && doc.file_url ? (
+                                        <a
+                                          href={doc.file_url}
+                                          className={styles.docLink}
+                                          onClick={(e) => {
+                                            e.preventDefault()
+                                            setPreviewUrl(doc.file_url)
+                                          }}
+                                        >
+                                          View
+                                        </a>
+                                      ) : kind === 'pdf' && doc.file_url ? (
+                                        <a
+                                          href={doc.file_url}
+                                          className={styles.docLink}
+                                          download
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          Download
+                                        </a>
+                                      ) : (
+                                        <span className={styles.muted}>—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className={styles.hint}>
+                        Employees see tasks in Inbox when a document is not submitted and their record is linked to a user account. Uploads are done from My profile.
+                      </p>
+                    </div>
                   </>
                 ) : (
-                <EmployeeHrPanels
-                  companyId={companyId}
-                  employeeId={detail.id}
-                  detail={detail}
-                  lifecycleEvents={lifecycleEvents}
-                  lifecycleLoading={lifecycleLoading}
-                  onRefreshDetail={() => loadDetail(selectedId)}
-                  onRefreshLifecycle={() =>
-                    listLifecycleEvents(companyId, selectedId).then(setLifecycleEvents)
-                  }
-                />
+                  <EmployeeHrPanels
+                    companyId={companyId}
+                    employeeId={detail.id}
+                    detail={detail}
+                    lifecycleEvents={lifecycleEvents}
+                    lifecycleLoading={lifecycleLoading}
+                    onRefreshDetail={() => loadDetail(selectedId)}
+                    onRefreshLifecycle={() => listLifecycleEvents(companyId, selectedId).then(setLifecycleEvents)}
+                  />
                 )}
               </>
             )}
           </div>
         </div>
       </section>
+
       {variant === 'profile' && previewUrl ? (
-        <div
-          className={styles.docPreviewBackdrop}
-          role="presentation"
-          onClick={() => setPreviewUrl(null)}
-        >
-          <div
-            className={styles.docPreviewModal}
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className={styles.docPreviewClose}
-              aria-label="Close preview"
-              onClick={() => setPreviewUrl(null)}
-            >
+        <div className={styles.docPreviewBackdrop} role="presentation" onClick={() => setPreviewUrl(null)}>
+          <div className={styles.docPreviewModal} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className={styles.docPreviewClose} aria-label="Close preview" onClick={() => setPreviewUrl(null)}>
               ×
             </button>
             <img src={previewUrl} alt="Document preview" />
           </div>
         </div>
+      ) : null}
+
+      {canCreate ? (
+        <section className={styles.card}>
+          <h3 className={styles.h3}>Create employee</h3>
+          <form className={styles.positionForm} onSubmit={onCreate}>
+            <label className={styles.labelBlock}>
+              Employee code
+              <input className={styles.input} value={code} onChange={(e) => setCode(e.target.value)} required />
+            </label>
+            <div className={styles.formRow}>
+              <label className={styles.labelBlock}>
+                Status
+                <select className={styles.input} value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="on_leave">On leave</option>
+                </select>
+              </label>
+              <label className={styles.labelBlock}>
+                Hire date
+                <input type="date" className={styles.input} value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
+              </label>
+            </div>
+            <div className={styles.formRow}>
+              <label className={styles.labelBlock}>
+                Department
+                <select
+                  className={styles.input}
+                  value={departmentId}
+                  onChange={(e) => {
+                    setDepartmentId(e.target.value)
+                    setPositionId('')
+                  }}
+                >
+                  <option value="">Unassigned</option>
+                  {depts.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.labelBlock}>
+                Position (designation)
+                <select className={styles.input} value={positionId} onChange={(e) => setPositionId(e.target.value)} disabled={!departmentId}>
+                  <option value="">{departmentId ? 'Select position' : 'Select a department first'}</option>
+                  {positions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {departmentId && positions.length === 0 ? (
+              <p className={styles.muted}>No positions for this department yet. Create them under Company → Org chart / Positions.</p>
+            ) : null}
+            <div className={styles.formRow}>
+              <label className={styles.labelBlock}>
+                Job catalog
+                <select className={styles.input} value={jobId} onChange={(e) => setJobId(e.target.value)}>
+                  <option value="">Unassigned</option>
+                  {jobs.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <button type="submit" className={styles.btnSm} disabled={pending}>
+              {pending ? 'Creating…' : 'Create employee'}
+            </button>
+          </form>
+        </section>
       ) : null}
     </div>
   )

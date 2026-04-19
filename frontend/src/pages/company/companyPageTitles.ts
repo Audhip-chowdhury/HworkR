@@ -117,9 +117,9 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
       title: 'Training scores',
       subtitle: 'Per-course employee scores and completion tracking',
     },
-    payroll: { title: 'Payroll', subtitle: 'Salary structures, pay runs, payslips' },
+    payroll: { title: 'Payroll', subtitle: 'Salary structures, grade bands, pay runs, reconciliation, payslips' },
     benefits: { title: 'Benefits', subtitle: 'Plans and enrollments' },
-    surveys: { title: 'Surveys', subtitle: 'Engagement surveys and responses' },
+    surveys: { title: 'Engagement & Surveys', subtitle: 'Pulse surveys, responses, action plans, and satisfaction trends' },
     inbox: { title: 'Inbox', subtitle: 'Tasks requiring your action' },
     progress: {
       title: 'Progress',

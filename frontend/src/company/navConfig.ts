@@ -41,6 +41,14 @@ const ALL_MEMBERS = [
 
 const WF_ROLES = ['company_admin', 'talent_acquisition', 'hr_ops']
 
+const PAYROLL_ROLES = ['company_admin', 'compensation_analytics', 'hr_ops', 'employee'] as const
+const PAYROLL_CONFIGURE_ROLES = ['company_admin', 'compensation_analytics', 'hr_ops'] as const
+const BENEFITS_ROLES = ['company_admin', 'compensation_analytics', 'employee'] as const
+const BENEFITS_MANAGE_ROLES = ['company_admin', 'compensation_analytics'] as const
+
+const SURVEYS_ROLES = ['company_admin', 'compensation_analytics', 'hr_ops', 'employee'] as const
+const SURVEYS_HR_ROLES = ['company_admin', 'compensation_analytics', 'hr_ops'] as const
+
 const EMPLOYEES_ROLES = [
   'company_admin',
   'hr_ops',
@@ -122,9 +130,45 @@ export const COMPANY_NAV_DEF: NavDefItem[] = [
       },
     ],
   },
-  { to: 'payroll', label: 'Payroll', roles: ['company_admin', 'compensation_analytics', 'employee'] },
-  { to: 'benefits', label: 'Benefits', roles: ['company_admin', 'compensation_analytics', 'employee'] },
-  { to: 'surveys', label: 'Surveys', roles: ['company_admin', 'compensation_analytics', 'employee'] },
+  {
+    type: 'group',
+    label: 'Payroll',
+    parentTo: 'payroll',
+    roles: [...PAYROLL_ROLES],
+    children: [
+      { to: 'payroll?tab=salary', label: 'Salary structures', roles: [...PAYROLL_CONFIGURE_ROLES] },
+      { to: 'payroll?tab=grades', label: 'Grade structure', roles: [...PAYROLL_CONFIGURE_ROLES] },
+      { to: 'payroll?tab=merit', label: 'Increment', roles: [...PAYROLL_CONFIGURE_ROLES] },
+      { to: 'payroll?tab=reimbursements', label: 'Reimbursements', roles: [...PAYROLL_CONFIGURE_ROLES] },
+      { to: 'payroll?tab=runs', label: 'Pay runs', roles: [...PAYROLL_CONFIGURE_ROLES] },
+      { to: 'payroll?tab=payslips', label: 'Payslips', roles: [...PAYROLL_ROLES] },
+      { to: 'payroll?tab=reconciliation', label: 'Reconciliation', roles: [...PAYROLL_CONFIGURE_ROLES] },
+    ],
+  },
+  {
+    type: 'group',
+    label: 'Benefits',
+    parentTo: 'benefits',
+    roles: [...BENEFITS_ROLES],
+    children: [
+      { to: 'benefits?tab=plans', label: 'Plans', roles: [...BENEFITS_MANAGE_ROLES] },
+      { to: 'benefits?tab=enrollments', label: 'Enrollments', roles: [...BENEFITS_MANAGE_ROLES] },
+      { to: 'benefits?tab=myBenefits', label: 'My Benefits', roles: ['employee'] },
+    ],
+  },
+  {
+    type: 'group',
+    label: 'Engagement & Surveys',
+    parentTo: 'surveys',
+    roles: [...SURVEYS_ROLES],
+    children: [
+      { to: 'surveys?tab=surveys', label: 'Surveys', roles: [...SURVEYS_ROLES] },
+      { to: 'surveys?tab=responses', label: 'Responses & Analysis', roles: [...SURVEYS_HR_ROLES] },
+      { to: 'surveys?tab=plans', label: 'Action Plans', roles: [...SURVEYS_HR_ROLES, 'employee'] },
+      { to: 'surveys?tab=trends', label: 'Satisfaction Trends', roles: [...SURVEYS_HR_ROLES] },
+      { to: 'surveys?tab=my', label: 'My Surveys', roles: ['employee'] },
+    ],
+  },
   { to: 'inbox', label: 'Inbox', roles: ALL_MEMBERS },
   { to: 'progress', label: 'Progress', roles: ALL_MEMBERS },
   { to: 'analytics', label: 'Analytics', roles: ['company_admin', 'compensation_analytics'] },
