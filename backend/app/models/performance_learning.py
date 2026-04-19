@@ -95,6 +95,8 @@ class Course(Base):
     prerequisites_json: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     content_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     mandatory: Mapped[bool] = mapped_column(default=False, nullable=False)
+    points: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    due_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

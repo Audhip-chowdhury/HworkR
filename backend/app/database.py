@@ -32,6 +32,8 @@ def init_db() -> None:
             conn.commit()
         _sqlite_add_column_if_missing("companies", "location", "VARCHAR(255)")
         _sqlite_add_column_if_missing("employees", "onboarding_checklist_json", "TEXT")
+        _sqlite_add_column_if_missing("courses", "points", "FLOAT DEFAULT 0")
+        _sqlite_add_column_if_missing("courses", "due_date", "VARCHAR(32)")
 
     with SessionLocal() as session:
         _seed_platform_admin(session)

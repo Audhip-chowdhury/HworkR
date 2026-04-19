@@ -112,8 +112,10 @@ class CourseCreate(BaseModel):
     category: str | None = None
     duration: str | None = None
     prerequisites_json: Any | None = None
-    content_url: str | None = None
+    content_url: str | None = Field(default=None, description="YouTube video URL")
     mandatory: bool = False
+    points: float = Field(default=0.0, ge=0)
+    due_date: str | None = Field(default=None, description="ISO date (YYYY-MM-DD) — assigned to all employees")
 
 
 class CourseOut(BaseModel):
@@ -125,6 +127,8 @@ class CourseOut(BaseModel):
     prerequisites_json: Any | None
     content_url: str | None
     mandatory: bool
+    points: float
+    due_date: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -148,6 +152,41 @@ class TrainingAssignmentOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TrainingAssignmentEnrichedOut(BaseModel):
+    """Assignment with course details and completion summary for UI tables."""
+
+    id: str
+    company_id: str
+    employee_id: str
+    course_id: str
+    assigned_by: str | None
+    due_date: str | None
+    status: str
+    created_at: datetime
+    course_title: str
+    course_points: float
+    youtube_url: str | None
+    completion_score: float | None = None
+    completed_at: datetime | None = None
+    display_status: str
+    overdue_before_due: bool = False
+
+
+class CourseEmployeeScoreRow(BaseModel):
+    employee_id: str
+    employee_code: str | None
+    display_name: str
+    score: float
+    status_label: str
+    overdue_before_due: bool
+    didnt_attend: bool
+
+
+class LearningEmployeeSuggestion(BaseModel):
+    employee_id: str
+    label: str
 
 
 class TrainingCompletionCreate(BaseModel):
