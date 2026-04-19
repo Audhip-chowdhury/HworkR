@@ -8,6 +8,7 @@ export type Employee = {
   employee_code: string
   department_id: string | null
   job_id: string | null
+  position_id: string | null
   manager_id: string | null
   location_id: string | null
   status: string
@@ -50,6 +51,16 @@ export type EmployeeSummary = {
   display_name: string
   display_email: string
   status: string
+}
+
+export type WorksWithPeer = {
+  employee_id: string
+  employee_code: string
+  display_name: string
+  display_email: string
+  position_id: string
+  position_name: string
+  grade: number
 }
 
 export type EmployeeDetail = Employee & {
@@ -95,6 +106,14 @@ export function getMyEmployee(companyId: string) {
   return apiFetch<Employee>(companyPath(companyId, '/employees/me'))
 }
 
+export function listMyDirectReports(companyId: string) {
+  return apiFetch<Employee[]>(companyPath(companyId, '/employees/my-direct-reports'))
+}
+
+export function listMyWorksWithPeers(companyId: string) {
+  return apiFetch<WorksWithPeer[]>(companyPath(companyId, '/employees/me/works-with-peers'))
+}
+
 export function createEmployee(
   companyId: string,
   body: {
@@ -102,6 +121,7 @@ export function createEmployee(
     employee_code: string
     department_id?: string | null
     job_id?: string | null
+    position_id?: string | null
     manager_id?: string | null
     location_id?: string | null
     status?: string
@@ -122,6 +142,7 @@ export function updateEmployee(
     employee_code: string
     department_id: string | null
     job_id: string | null
+    position_id: string | null
     manager_id: string | null
     location_id: string | null
     status: string

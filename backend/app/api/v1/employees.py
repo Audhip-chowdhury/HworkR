@@ -13,6 +13,7 @@ from app.models.employee import Employee
 from app.models.lifecycle import EmployeeLifecycleEvent
 from app.models.membership import CompanyMembership
 from app.models.org import Department, JobCatalogEntry, Location
+from app.models.position import Position
 from app.models.user import User
 from app.models.employee_document import EmployeeDocument
 from app.schemas.employees import (
@@ -27,10 +28,15 @@ from app.schemas.employees import (
     LifecycleEventCreate,
     LifecycleEventOut,
     OnboardingChecklistUpdate,
+    WorksWithPeerOut,
 )
 from app.services.activity_tracking import log_tracked_hr_action
 from app.services.audit import write_audit
-from app.services.employee_detail import display_name_and_email, load_employee_documents, resolve_org_labels
+from app.services.employee_detail import (
+    display_name_and_email,
+    load_employee_documents,
+    resolve_org_labels,
+)
 from app.services.employee_document_files import save_employee_document_file
 from app.services.employee_document_sync import (
     OPTIONAL_DOC_TYPES,
@@ -53,6 +59,7 @@ from app.services.integration_hooks import publish_domain_event_post_commit
 router = APIRouter(prefix="/companies/{company_id}/employees", tags=["employees"])
 
 _HR_ROLES = frozenset({"company_admin", "hr_ops"})
+_MY_GOALS_ACCESS_ROLES = frozenset({"employee", "hr_ops"})
 _HR_OR_BROADER = frozenset(
     {"company_admin", "hr_ops", "talent_acquisition", "ld_performance", "compensation_analytics"}
 )
@@ -299,6 +306,12 @@ def _validate_employee_refs(
         mgr = get_employee_by_id(db, company_id, data["manager_id"])
         if mgr is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Manager employee not found")
+    if data.get("position_id"):
+        pos = db.execute(
+            select(Position).where(Position.id == data["position_id"], Position.company_id == company_id)
+        ).scalar_one_or_none()
+        if pos is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Position not found")
 
 
 @router.get("", response_model=list[EmployeeOut])
@@ -356,6 +369,7 @@ def create_employee(
         employee_code=body.employee_code.strip(),
         department_id=body.department_id,
         job_id=body.job_id,
+        position_id=body.position_id,
         manager_id=body.manager_id,
         location_id=body.location_id,
         status=body.status,
@@ -417,6 +431,57 @@ def get_my_employee_record(
     db.commit()
     db.refresh(emp)
     return emp
+
+
+@router.get("/me/works-with-peers", response_model=list[WorksWithPeerOut])
+def list_my_works_with_peers(
+    company_id: str,
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_MY_GOALS_ACCESS_ROLES))],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[WorksWithPeerOut]:
+    """
+    Peers for peer review: active employees who share your manager and the same position `grade`
+    (via `employees.position_id` → `positions.grade`), excluding yourself.
+    """
+    user, _ = ctx
+    me = get_employee_for_user(db, company_id, user.id)
+    if me is None or not me.position_id or not me.manager_id:
+        return []
+    my_pos = db.get(Position, me.position_id)
+    if my_pos is None or my_pos.company_id != company_id:
+        return []
+
+    stmt = (
+        select(Employee, Position, User)
+        .join(Position, Employee.position_id == Position.id)
+        .outerjoin(User, Employee.user_id == User.id)
+        .where(
+            Employee.company_id == company_id,
+            Employee.id != me.id,
+            Employee.manager_id == me.manager_id,
+            Employee.manager_id.isnot(None),
+            Employee.position_id.isnot(None),
+            Position.grade == my_pos.grade,
+            Employee.status == "active",
+        )
+        .order_by(Employee.employee_code)
+    )
+    rows = db.execute(stmt).all()
+    out: list[WorksWithPeerOut] = []
+    for emp, pos, u in rows:
+        dn, de = display_name_and_email(emp, u)
+        out.append(
+            WorksWithPeerOut(
+                employee_id=emp.id,
+                employee_code=emp.employee_code,
+                display_name=dn,
+                display_email=de,
+                position_id=pos.id,
+                position_name=pos.name,
+                grade=pos.grade,
+            )
+        )
+    return out
 
 
 @router.patch("/me", response_model=EmployeeOut)
@@ -638,6 +703,25 @@ def patch_employee_document_hr(
 ) -> EmployeeDocument:
     user, _ = ctx
     return _patch_employee_document(db, company_id, employee_id, doc_type, body, user.id)
+
+
+@router.get("/my-direct-reports", response_model=list[EmployeeOut])
+def list_my_direct_reports(
+    company_id: str,
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[Employee]:
+    """Employees who report to the current user's employee record (same company)."""
+    user, _ = ctx
+    me = get_employee_for_user(db, company_id, user.id)
+    if me is None:
+        return []
+    r = db.execute(
+        select(Employee)
+        .where(Employee.company_id == company_id, Employee.manager_id == me.id)
+        .order_by(Employee.employee_code)
+    )
+    return list(r.scalars().all())
 
 
 @router.get("/{employee_id}", response_model=EmployeeOut)

@@ -25,6 +25,7 @@ from app.api.v1 import (
     performance_learning,
     platform,
     recruitment,
+    recruitment_public,
     scenarios,
     sso,
     tracking,
@@ -85,6 +86,7 @@ v1.include_router(tracking.router)
 v1.include_router(certification.router)
 v1.include_router(analytics.router)
 v1.include_router(recruitment.router)
+v1.include_router(recruitment_public.router)
 v1.include_router(notifications.router)
 v1.include_router(inbox.router)
 v1.include_router(workflows.router)

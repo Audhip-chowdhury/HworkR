@@ -105,6 +105,29 @@
   cursor: pointer;
 }
 
+.interviewScheduleBtn {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f6f8fb;
+  color: #334155;
+  font-weight: 500;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.interviewScheduleBtn:hover:not(:disabled) {
+  border-color: #94a3b8;
+  background: #eef2f7;
+}
+
+.interviewScheduleBtn:disabled {
+  border-color: #d5dbe5;
+  background: #e9edf3;
+  color: #7a8798;
+  cursor: not-allowed;
+}
+
 .actions {
   margin-top: 1rem;
   display: flex;
@@ -121,6 +144,17 @@
 .error {
   color: var(--color-error);
   margin: 0 0 1rem;
+}
+
+.successBanner {
+  margin: 0 0 0.9rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #9bd9c8;
+  border-radius: 8px;
+  background: #ebfaf5;
+  color: #0f6e5d;
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .flowHint {
@@ -209,6 +243,65 @@
   font-weight: 500;
 }
 
+/* Requisitions: structured form (RecruitmentPage) */
+.reqForm {
+  max-width: 640px;
+  margin-bottom: 1.25rem;
+}
+
+.reqFieldset {
+  margin: 0;
+  padding: 1rem 1.15rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.reqLegend {
+  padding: 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.reqSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.reqSection:first-of-type {
+  margin-top: 0.65rem;
+}
+
+.reqSection + .reqSection {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.reqFormGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem 1rem;
+  align-items: end;
+}
+
+.reqHint {
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.reqToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
 .positionForm {
   display: flex;
   flex-direction: column;
@@ -257,6 +350,31 @@
   color: var(--text-primary);
   font-size: 0.875rem;
   cursor: pointer;
+}
+
+.moduleNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.moduleNavBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.moduleNavBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .tableWrap {
@@ -584,4 +702,468 @@
     outline-offset: 4px;
     background-color: transparent;
   }
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.modalPanel {
+  width: min(100%, 640px);
+  max-height: min(90vh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modalHeader h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.modalBody {
+  padding: 1rem 1.15rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.modalFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modalClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modalClose:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.cyclesToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.cycleList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cycleList li {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+/* Inbox / notifications dropdown (CompanyLayout top bar) */
+.notificationsWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.notificationsPanel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  width: min(560px, calc(100vw - 2rem));
+  min-width: min(420px, calc(100vw - 2rem));
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  z-index: 10050;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
+}
+
+.notificationsPanelHeader {
+  flex-shrink: 0;
+  padding: 1rem 1.15rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+.notificationsPanelHeader .h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.notificationsPanelBody {
+  flex: 1;
+  min-height: 200px;
+  max-height: min(calc(70vh - 5rem), 560px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.notificationsItem {
+  padding: 0.85rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-page);
+  text-align: left;
+}
+
+.notificationsItem:last-child {
+  margin-bottom: 0;
+}
+
+.notificationsItemTitle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: 0.35rem;
+  line-height: 1.35;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+}
+
+.notificationsItemTitle:hover {
+  text-decoration: underline;
+}
+
+.notificationsItemMessage {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  margin: 0;
+  word-break: break-word;
+}
+
+.notificationsEmpty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.goalsSubmittedBanner {
+  padding: 1.15rem 1.25rem;
+  border-radius: 12px;
+  border: 1px solid rgba(22, 163, 74, 0.35);
+  background: rgba(22, 163, 74, 0.08);
+  margin-bottom: 1rem;
+  max-width: 720px;
+}
+
+.goalsSubmittedBanner strong {
+  display: block;
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin-bottom: 0.35rem;
+}
+
+.goalsSubmittedBanner p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.goalsReadOnlyBlock {
+  opacity: 0.95;
+}
+
+.goalsReadOnlyBlock textarea,
+.goalsReadOnlyBlock input {
+  background: var(--bg-page) !important;
+  cursor: default;
+}
+
+/* Manager team goals: filters + list + detail */
+.teamGoalsToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.teamGoalsToolbarField {
+  flex: 1 1 200px;
+  min-width: min(100%, 200px);
+  max-width: 22rem;
+}
+
+/* Manager team goals: list + detail */
+.teamGoalsSplit {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 900px) {
+  .teamGoalsSplit {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Narrow screens: compact goal picker so the list is not repeated above the detail panel */
+.teamGoalsMobilePicker {
+  display: none;
+}
+
+.teamGoalsMobilePickerSelect {
+  width: 100%;
+  max-width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 900px) {
+  .teamGoalsMobilePicker {
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  .teamGoalsList {
+    display: none;
+  }
+}
+
+.teamGoalsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding: 0.25rem 0.25rem 0.25rem 0;
+  border-right: 1px solid var(--border);
+  padding-right: 0.75rem;
+}
+
+.teamGoalsListBtn {
+  width: 100%;
+  text-align: left;
+  padding: 0.6rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.teamGoalsListBtn:hover {
+  background: var(--bg-card);
+  border-color: var(--color-primary);
+}
+
+.teamGoalsListBtnActive {
+  border-color: var(--color-primary);
+  background: var(--bg-card);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.teamGoalsListBtnComplete {
+  border-color: rgba(22, 163, 74, 0.45);
+}
+
+.teamGoalsListMeta {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.teamGoalsDetail {
+  min-width: 0;
+}
+
+.teamGoalsDetailCard {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+
+/* Peer review page (tabs + feedback cards) */
+.peerReviewIntro {
+  margin: 0 0 1.25rem;
+  max-width: 52rem;
+  line-height: 1.55;
+}
+
+.peerReviewTabBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.peerReviewTabBtn {
+  padding: 0.45rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.peerReviewTabBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.peerReviewTabBtnActive {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.peerReviewTabBtnActive:hover {
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.peerReviewFilterRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.peerReviewFilterInput {
+  flex: 1;
+  min-width: 200px;
+  max-width: 22rem;
+}
+
+.peerReviewFilterMeta {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.peerReviewFormStack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.peerReviewFormCard {
+  margin: 0;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-page);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.peerReviewFormCardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.peerReviewSubjectName {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.peerReviewCycleTag {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.peerReviewEmptyPanel {
+  padding: 2rem 1.25rem;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--bg-page);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.peerReviewSelfSection {
+  margin-top: 0.5rem;
 }

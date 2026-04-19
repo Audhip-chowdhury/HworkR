@@ -1,6 +1,7 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Outlet, useLocation, useParams } from 'react-router-dom'
-import { useMemo } from 'react'
 import { useAuth } from '../../auth/AuthContext'
+import { listMyDirectReports } from '../../api/employeesApi'
 import { AppShell } from '../../components/layout/AppShell'
 import { LiveEventToasts } from '../../components/LiveEventToasts'
 import { NotificationsPanel } from '../../components/NotificationsPanel'
@@ -31,8 +32,36 @@ export function CompanyLayout() {
   }
 
   const displayCompany = entry.company.name
+  const [employeeHasDirectReports, setEmployeeHasDirectReports] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (!companyId) return
+    if (entry.membership.role !== 'employee') {
+      setEmployeeHasDirectReports(null)
+      return
+    }
+    let cancelled = false
+    setEmployeeHasDirectReports(null)
+    void listMyDirectReports(companyId)
+      .then((list) => {
+        if (!cancelled) setEmployeeHasDirectReports(list.length > 0)
+      })
+      .catch(() => {
+        if (!cancelled) setEmployeeHasDirectReports(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, entry.membership.role])
+
   const navItems = useMemo(() => {
-    const raw = companyNavItems(companyId, entry.membership)
+    const raw = companyNavItems(
+      companyId,
+      entry.membership,
+      entry.membership.role === 'employee'
+        ? { showTeamGoals: employeeHasDirectReports === true }
+        : undefined,
+    )
     const preserveQuery =
       location.pathname.includes('/employees/') ||
       location.pathname.includes('/leave/') ||
@@ -66,7 +95,7 @@ export function CompanyLayout() {
       }
       return item
     })
-  }, [companyId, entry.membership, location.pathname, location.search])
+  }, [companyId, entry.membership, employeeHasDirectReports, location.pathname, location.search])
 
   return (
     <RealtimeEventsProvider>

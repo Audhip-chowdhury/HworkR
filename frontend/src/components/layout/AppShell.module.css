@@ -209,6 +209,9 @@
   padding: 1.25rem 1.75rem;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
+  overflow: visible;
+  position: relative;
+  z-index: 2;
 }
 
 .pageTitle {
@@ -226,6 +229,11 @@
 .topbarRight {
   display: flex;
   align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 10;
   gap: 0.65rem;
 }
 

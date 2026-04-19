@@ -24,9 +24,16 @@ export function WorkspaceDashboardPage() {
         { to: `/company/${companyId}/my-profile`, label: 'My profile' },
         { to: `/company/${companyId}/inbox`, label: 'Inbox' },
         { to: `/company/${companyId}/hr-ops`, label: 'My leave' },
-        { to: `/company/${companyId}/performance`, label: 'My goals' },
+        { to: `/company/${companyId}/my-goals`, label: 'My goals' },
         { to: `/company/${companyId}/learning`, label: 'My learning' },
       ]
+    : role === 'hr_ops'
+      ? [
+          { to: `/company/${companyId}/hr-ops`, label: 'My leave' },
+          { to: `/company/${companyId}/my-goals`, label: 'My goals' },
+          { to: `/company/${companyId}/performance`, label: 'Performance' },
+          { to: `/company/${companyId}/learning`, label: 'My learning' },
+        ]
     : role === 'talent_acquisition'
       ? [
           { to: `/company/${companyId}/recruitment/pipeline`, label: 'Pipeline' },

@@ -14,6 +14,12 @@ export type NavDefItem =
       children: NavLeaf[]
     }
 
+/** Optional filters for nav (e.g. hide Team goals when the user has no direct reports). */
+export type CompanyNavOptions = {
+  /** When false, "Team goals" is hidden for employees and HR ops. Omitted or true: default role-based visibility. */
+  showTeamGoals?: boolean
+}
+
 const EXPORT_ROLES = new Set(['company_admin', 'talent_acquisition', 'hr_ops', 'ld_performance', 'compensation_analytics'])
 const SCENARIO_ROLES = new Set(['company_admin', 'hr_ops', 'ld_performance'])
 const HR_ANALYTICS = new Set([
@@ -54,7 +60,9 @@ const LEAVE_HR_SUBTABS_ROLES = [
 
 export const COMPANY_NAV_DEF: NavDefItem[] = [
   { to: '', label: 'Dashboard', roles: ALL_MEMBERS },
-  { to: 'my-profile', label: 'My profile', roles: ['employee'] },
+  { to: 'my-profile', label: 'My profile', roles: ['employee', 'hr_ops'] },
+  { to: 'my-goals', label: 'My goals', roles: ['employee', 'hr_ops'] },
+  { to: 'team-goals', label: 'Team goals', roles: ['employee', 'hr_ops'] },
   { to: 'org', label: 'Organization', roles: ALL_MEMBERS },
   {
     type: 'group',
@@ -94,7 +102,7 @@ export const COMPANY_NAV_DEF: NavDefItem[] = [
   { to: 'hr-ops', label: 'HR Ops', roles: ['company_admin', 'hr_ops', 'employee'] },
   { to: 'workflows', label: 'Workflows', roles: WF_ROLES },
   { to: 'recruitment', label: 'Recruitment', roles: ALL_MEMBERS },
-  { to: 'performance', label: 'Performance', roles: ['company_admin', 'ld_performance', 'employee'] },
+  { to: 'performance', label: 'Performance', roles: ['hr_ops'] },
   {
     type: 'group',
     label: 'Learning and Development',
@@ -137,7 +145,11 @@ export type NavResolvedItem =
       children: { to: string; label: string }[]
     }
 
-export function companyNavItems(companyId: string, membership: CompanyMembership): NavResolvedItem[] {
+export function companyNavItems(
+  companyId: string,
+  membership: CompanyMembership,
+  opts?: CompanyNavOptions,
+): NavResolvedItem[] {
   const base = `/company/${companyId}/`
   const role = membership.role
   const out: NavResolvedItem[] = []
@@ -160,6 +172,13 @@ export function companyNavItems(companyId: string, membership: CompanyMembership
     } else {
       const leaf = item as NavLeaf
       if (leaf.roles && !leaf.roles.includes(role)) continue
+      if (
+        leaf.to === 'team-goals' &&
+        (role === 'employee' || role === 'hr_ops') &&
+        opts?.showTeamGoals === false
+      ) {
+        continue
+      }
       out.push({ kind: 'link', to: `${base}${leaf.to}`, label: leaf.label })
     }
   }

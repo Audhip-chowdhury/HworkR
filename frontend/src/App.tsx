@@ -10,6 +10,7 @@ import { CandidatePipelinePage } from './pages/company/recruitment/CandidatePipe
 import { InterviewsPage } from './pages/company/recruitment/InterviewsPage'
 import { OffersPage } from './pages/company/recruitment/OffersPage'
 import { CandidatePortalPage } from './pages/company/recruitment/CandidatePortalPage'
+import { CandidateTrackingPage } from './pages/company/recruitment/CandidateTrackingPage'
 import { ScenariosPage } from './pages/company/scenarios/ScenariosPage'
 import { TrackingPage } from './pages/company/tracking/TrackingPage'
 import { WebhooksPage } from './pages/company/webhooks/WebhooksPage'
@@ -38,6 +39,10 @@ import { EmployeeDetailPage } from './pages/company/employees/EmployeeDetailPage
 import { MembersPage } from './pages/company/members/MembersPage'
 import { HrOpsPage } from './pages/company/hr-ops/HrOpsPage'
 import { PerformancePage } from './pages/company/performance/PerformancePage'
+import { EmployeeMyGoalsPage } from './pages/company/performance/EmployeeMyGoalsPage'
+import { MyGoalsLayout } from './pages/company/performance/MyGoalsLayout'
+import { PeerReviewPage } from './pages/company/performance/PeerReviewPage'
+import { ManagerTeamGoalsPage } from './pages/company/performance/ManagerTeamGoalsPage'
 import { LearningDevelopmentLayout } from './pages/company/learning/LearningDevelopmentLayout'
 import { CourseCatalogPage } from './pages/company/learning/CourseCatalogPage'
 import { TrainingAssignmentsPage } from './pages/company/learning/TrainingAssignmentsPage'
@@ -133,6 +138,11 @@ export default function App() {
         <Route index element={<WorkspaceDashboardPage />} />
         <Route path="org" element={<CompanyOrgPage />} />
         <Route path="my-profile" element={<MyProfilePage />} />
+        <Route path="my-goals" element={<MyGoalsLayout />}>
+          <Route index element={<EmployeeMyGoalsPage />} />
+          <Route path="peer-review" element={<PeerReviewPage />} />
+        </Route>
+        <Route path="team-goals" element={<ManagerTeamGoalsPage />} />
         <Route path="employees/profile" element={<EmployeesProfilePage />} />
         <Route path="employees/lifecycle" element={<EmployeesLifecyclePage />} />
         <Route path="leave/policies" element={<LeavePoliciesPage />} />
@@ -157,6 +167,7 @@ export default function App() {
         <Route path="recruitment/interviews" element={<InterviewsPage />} />
         <Route path="recruitment/offers" element={<OffersPage />} />
         <Route path="recruitment/candidate-portal" element={<CandidatePortalPage />} />
+        <Route path="recruitment/tracking" element={<CandidateTrackingPage />} />
         <Route path="performance" element={<PerformancePage />} />
         <Route path="learning" element={<LearningDevelopmentLayout />}>
           <Route index element={<Navigate to="assignments" replace />} />

@@ -32,13 +32,26 @@ def init_db() -> None:
             conn.commit()
         _sqlite_add_column_if_missing("companies", "location", "VARCHAR(255)")
         _sqlite_add_column_if_missing("employees", "onboarding_checklist_json", "TEXT")
+        _sqlite_add_column_if_missing("employees", "position_id", "VARCHAR(36)")
+        _sqlite_add_column_if_missing("goals", "kpi_definition_id", "VARCHAR(36)")
+        _sqlite_add_column_if_missing("goals", "actual_achievement", "TEXT")
+        _sqlite_add_column_if_missing("goals", "manager_rating", "INTEGER")
+        _sqlite_add_column_if_missing("goals", "manager_comment", "TEXT")
+        _sqlite_add_column_if_missing("review_cycles", "goals_deadline", "VARCHAR(32)")
+        _sqlite_add_column_if_missing("requisitions", "req_code", "VARCHAR(6)")
+        _sqlite_add_column_if_missing("job_postings", "posted", "INTEGER NOT NULL DEFAULT 0")
+        _sqlite_add_column_if_missing("job_postings", "posting_ref", "VARCHAR(128)")
+        _sqlite_create_unique_index_if_missing("uq_job_postings_requisition_id", "job_postings", "requisition_id")
+        
         _sqlite_add_column_if_missing("courses", "points", "FLOAT DEFAULT 0")
         _sqlite_add_column_if_missing("courses", "due_date", "VARCHAR(32)")
+        _sqlite_migrate_req_code_global_unique()
 
     with SessionLocal() as session:
         _seed_platform_admin(session)
         _migrate_employee_document_doc_types(session)
         _backfill_employee_documents(session)
+        _backfill_requisition_req_codes(session)
 
 
 def _migrate_employee_document_doc_types(session: Session) -> None:
@@ -106,6 +119,23 @@ def _backfill_employee_documents(session: Session) -> None:
     session.commit()
 
 
+def _backfill_requisition_req_codes(session: Session) -> None:
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.models.recruitment import Requisition  # noqa: PLC0415
+    from app.services.requisition_codes import backfill_req_codes_for_company  # noqa: PLC0415
+
+    rows = list(session.execute(select(Requisition).where(Requisition.req_code.is_(None))).scalars().all())
+    if not rows:
+        return
+    by_company: dict[str, list[Requisition]] = {}
+    for req in rows:
+        by_company.setdefault(req.company_id, []).append(req)
+    for cid, lst in by_company.items():
+        backfill_req_codes_for_company(session, cid, lst)
+    session.commit()
+
+
 def _sqlite_add_column_if_missing(table: str, column: str, ddl_type: str) -> None:
     """SQLite has limited ALTER — add nullable columns for existing dev DBs."""
     with engine.connect() as conn:
@@ -114,6 +144,36 @@ def _sqlite_add_column_if_missing(table: str, column: str, ddl_type: str) -> Non
         if column not in cols:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
             conn.commit()
+
+
+def _sqlite_migrate_req_code_global_unique() -> None:
+    """Replace composite (company_id, req_code) unique index with global unique on req_code."""
+    if not database_url.startswith("sqlite"):
+        return
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("DROP INDEX IF EXISTS uq_requisitions_company_req_code"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_requisitions_req_code ON requisitions(req_code)"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+
+def _sqlite_create_unique_index_if_missing(name: str, table: str, column: str) -> None:
+    """Enforce one job posting per requisition on existing SQLite DBs (new installs get this from metadata)."""
+    with engine.connect() as conn:
+        r = conn.execute(text("SELECT name FROM sqlite_master WHERE type='index' AND name=:n"), {"n": name})
+        if r.fetchone():
+            return
+        try:
+            conn.execute(text(f"CREATE UNIQUE INDEX {name} ON {table}({column})"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
 
 def _seed_platform_admin(session: Session) -> None:

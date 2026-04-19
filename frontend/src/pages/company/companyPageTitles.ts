@@ -7,15 +7,19 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
       ? 'integrations/sso'
       : parts[0] === 'employees' && parts[1]
         ? `employees/${parts[1]}`
-        : parts[0] === 'leave' && parts[1]
-          ? `leave/${parts[1]}`
-          : parts[0] === 'learning' && parts[1]
+        : parts[0] === 'my-goals' && parts[1]
+          ? `my-goals/${parts[1]}`
+          : parts[0] === 'leave' && parts[1]
+            ? `leave/${parts[1]}`
+            : parts[0] === 'recruitment' && parts[1] === 'tracking'
+              ? 'recruitment/tracking'
+              : parts[0] === 'learning' && parts[1]
             ? `learning/${parts[1]}`
             : parts[0] === 'audits' && parts[1] === 'policies' && parts[2] === 'publish'
-              ? 'audits/policies/publish'
-              : parts[0] === 'audits' && parts[1]
-                ? `audits/${parts[1]}`
-                : parts[0] || 'dashboard'
+                  ? 'audits/policies/publish'
+                  : parts[0] === 'audits' && parts[1]
+                    ? `audits/${parts[1]}`
+                    : parts[0] || 'dashboard'
 
   const map: Record<string, { title: string; subtitle?: string }> = {
     dashboard: {
@@ -25,6 +29,18 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
     'my-profile': {
       title: 'My profile',
       subtitle: 'Personal employee record',
+    },
+    'my-goals': {
+      title: 'My review goals',
+      subtitle: 'Fill targets and achievements for notified review cycles',
+    },
+    'my-goals/peer-review': {
+      title: 'Peer review',
+      subtitle: 'Colleagues at your grade who report to the same manager (works-with cohort)',
+    },
+    'team-goals': {
+      title: 'Team goals review',
+      subtitle: "Rate and comment on your direct reports' goals",
     },
     org: {
       title: 'Organizational structure',
@@ -37,6 +53,10 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
     recruitment: {
       title: 'Recruitment',
       subtitle: 'ATS pipeline, interviews, and offers',
+    },
+    'recruitment/tracking': {
+      title: 'Candidate activity',
+      subtitle: 'Pipeline transitions and application events',
     },
     'employees/profile': {
       title: 'Employee profile management',
@@ -80,7 +100,7 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
     },
     members: { title: 'Members', subtitle: 'Company membership administration' },
     'hr-ops': { title: 'HR operations', subtitle: 'Leave, balances, attendance, holidays, and policy' },
-    performance: { title: 'Performance', subtitle: 'Cycles, goals, assessments, PIPs' },
+    performance: { title: 'Performance', subtitle: 'Review cycles, goal tracking, assessments, PIPs' },
     learning: {
       title: 'Learning and Development',
       subtitle: 'Training courses, assignments, and scores',
