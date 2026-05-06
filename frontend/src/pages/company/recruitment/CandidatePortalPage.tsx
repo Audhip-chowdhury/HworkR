@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { applyToPosting, listCandidateOpenPostings, listMyApplications, listMyOffers, respondToOffer } from '../../../api/recruitmentApi'
 import { useAuth } from '../../../auth/AuthContext'
 import styles from '../CompanyWorkspacePage.module.css'
@@ -63,6 +63,9 @@ export function CandidatePortalPage() {
 
   return (
     <div className={styles.org}>
+      <div className={styles.moduleNav}>
+        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment`}>Back to Recruitment</Link>
+      </div>
       {error ? <p className={styles.error}>{error}</p> : null}
       {loading ? <p className={styles.muted}>Loading portal…</p> : null}
       <section className={styles.card}>

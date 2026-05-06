@@ -149,10 +149,12 @@ Step 2: Job Posting
   → Sets application deadline
   → Activity tracked: time to post after approval
 
+  //integrate with naukri
+
 Step 3: Applicant Tracking Pipeline
   Employee-users "apply" for open positions
   HR reviews applications in pipeline view:
-  
+
   Applied → Screened → Phone Screen → Interview → Assessment → Offer → Hired
      ↓         ↓           ↓            ↓          ↓         ↓
    Rejected  Rejected   Rejected    Rejected   Rejected  Declined
@@ -160,25 +162,26 @@ Step 3: Applicant Tracking Pipeline
   HR moves candidates through stages
   → Activity tracked: screening time, rejection reason quality,
      pipeline velocity, candidate communication timeliness
-
+//activity tracking , integration
+-> remove hired from queue
 Step 4: Interview Management
   HR schedules interviews (date, panel, format)
   → Collects feedback from "interviewers" (simulated or other users)
   → Compiles scorecards
   → Activity tracked: scheduling efficiency, feedback collection rate
-
+//calendar on screen
 Step 5: Offer Management
   HR generates offer letter → selects compensation package
   → Sends to candidate (employee-user receives it)
   → Tracks acceptance/negotiation/decline
   → Activity tracked: offer turnaround time, comp alignment
-
+//role management , offer letter pdf , accept to denies
 Step 6: Handoff to Onboarding
   Once accepted → triggers onboarding checklist
   → HR Ops specialist picks it up from here
   → Activity tracked: clean handoff, no data gaps
 ```
-
+//left
 **Candidate Portal (Employee-User Side- we have dedicated webpage will intigate to this ):**
 
 ```
@@ -265,8 +268,9 @@ Performance Reviews:
   • Manager assessment facilitation
   • 360-degree feedback setup (peer nominations, collection)
   • Rating calibration sessions
-  • Review documentation
-  • Performance Improvement Plans (PIPs) for underperformers
+  • Review documentation:notification to employee
+  • Performance Improvement Plans (PIPs) for underperformers: worst rating threshold
+  //who has filled and who hasnt
   → Activity tracked: review cycle completion rate, on-time
      submission %, feedback quality, calibration participation
 
@@ -280,8 +284,8 @@ Learning & Development:
      completion follow-up rate, gap identification quality
 
 Employee Development:
-  • Career path planning facilitation
-  • Succession planning for key positions
+  • Career path planning facilitation : display org tree
+  • Succession planning for key positions : sort by rating
   • Talent pool identification (high-potential tracking)
   • Mentorship program management
   → Activity tracked: development plan creation rate,

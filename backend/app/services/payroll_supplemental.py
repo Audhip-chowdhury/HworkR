@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -11,7 +12,10 @@ from sqlalchemy.orm import Session
 from app.models.base import uuid_str
 from app.models.compensation_engagement import PayrollLedgerEntry, Payslip
 
-ALLOWED_LINE_TYPES = frozenset({"reimbursement", "adjustment", "arrears", "other"})
+ALLOWED_LINE_TYPES = frozenset({"reimbursement", "adjustment", "arrears", "benefit", "benefits", "other"})
+# Extras: recorded on payslip + ledger but do not count against gross validation or salary residual.
+EXTRA_ONLY_LINE_TYPES = frozenset({"reimbursement", "benefit", "benefits", "adjustment", "arrears"})
+logger = logging.getLogger(__name__)
 
 
 def parse_supplemental_lines(earnings_json: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -43,12 +47,32 @@ def supplemental_lines_total(lines: list[dict[str, Any]]) -> float:
     return float(sum(float(x["amount"]) for x in lines))
 
 
+def payslip_inband_total(lines: list[dict[str, Any]]) -> float:
+    """Only line-types that should count against payslip gross."""
+    return float(sum(float(x["amount"]) for x in lines if str(x.get("type")) not in EXTRA_ONLY_LINE_TYPES))
+
+
+def has_only_extra_lines(earnings_json: dict[str, Any] | None) -> bool:
+    """True when every supplemental line is an extra (reimbursement, benefit, adjustment, arrears)."""
+    lines = parse_supplemental_lines(earnings_json)
+    if not lines:
+        return False
+    return all(str(x.get("type")) in EXTRA_ONLY_LINE_TYPES for x in lines)
+
+
 def validate_payslip_supplemental_vs_gross(*, gross: float, earnings_json: dict[str, Any] | None) -> None:
     lines = parse_supplemental_lines(earnings_json)
     if not lines:
         return
-    s = supplemental_lines_total(lines)
-    if s > gross + 1e-6:
+    inband_total = payslip_inband_total(lines)
+    if inband_total > gross + 1e-6:
+        logger.warning(
+            "Payslip supplemental validation failed: inband_total=%.2f gross=%.2f excess=%.2f lines=%s",
+            inband_total,
+            gross,
+            inband_total - gross,
+            lines,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Sum of supplemental earnings lines cannot exceed payslip gross",
@@ -59,8 +83,8 @@ def sync_ledger_entries_for_payslip(db: Session, payslip: Payslip) -> None:
     """Replace ledger rows for this payslip from earnings_json.lines + residual salary bucket."""
     db.execute(delete(PayrollLedgerEntry).where(PayrollLedgerEntry.payslip_id == payslip.id))
     lines = parse_supplemental_lines(payslip.earnings_json if isinstance(payslip.earnings_json, dict) else None)
-    sup_total = supplemental_lines_total(lines)
-    residual = float(payslip.gross) - sup_total
+    inband_total = payslip_inband_total(lines)
+    residual = float(payslip.gross) - inband_total
     if residual < -1e-6:
         return
     if residual > 1e-6:
@@ -82,6 +106,8 @@ def sync_ledger_entries_for_payslip(db: Session, payslip: Payslip) -> None:
         kind = str(ln["type"])
         if kind == "reimbursement":
             ek = "reimbursement"
+        elif kind in {"benefit", "benefits"}:
+            ek = "benefit_payment"
         elif kind == "arrears":
             ek = "arrears"
         elif kind == "adjustment":

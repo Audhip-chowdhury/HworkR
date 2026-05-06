@@ -66,3 +66,39 @@ class CertificateOut(BaseModel):
     verification_id: str
 
     model_config = {"from_attributes": True}
+
+
+class ProgressDimensionOut(BaseModel):
+    completeness: float | None
+    accuracy: float | None
+    timeliness: float | None
+    process_adherence: float | None
+
+
+class ProgressModuleOut(BaseModel):
+    module: str
+    label: str
+    action_count: int
+    avg_score: float | None
+
+
+class ProgressRecentActionOut(BaseModel):
+    id: str
+    occurred_at: datetime
+    module: str
+    action_type: str
+    action_detail: str | None
+    score: float | None
+
+
+class CertificationProgressDashboardOut(BaseModel):
+    overall_score: float | None
+    action_count: int
+    dimension_averages: ProgressDimensionOut
+    module_breakdown: list[ProgressModuleOut]
+    required_actions_total: int
+    required_actions_completed: int
+    missing_required_actions: list[str]
+    critical_failure_count: int
+    status: str
+    recent_actions: list[ProgressRecentActionOut]

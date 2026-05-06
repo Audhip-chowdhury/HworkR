@@ -1,5 +1,7 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Outlet, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { listMyDirectReports } from '../../api/employeesApi'
 import { AppShell } from '../../components/layout/AppShell'
 import { LiveEventToasts } from '../../components/LiveEventToasts'
 import { NotificationsPanel } from '../../components/NotificationsPanel'
@@ -18,7 +20,7 @@ export function CompanyLayout() {
   const after = location.pathname.startsWith(prefix)
     ? location.pathname.slice(prefix.length)
     : ''
-  const { title, subtitle } = companySectionTitle(after)
+  const { title, subtitle } = companySectionTitle(after, location.search)
 
   if (!entry) {
     return (
@@ -30,7 +32,67 @@ export function CompanyLayout() {
   }
 
   const displayCompany = entry.company.name
-  const navItems = companyNavItems(companyId, entry.membership)
+  const [employeeHasDirectReports, setEmployeeHasDirectReports] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (!companyId) return
+    if (entry.membership.role !== 'employee') {
+      setEmployeeHasDirectReports(null)
+      return
+    }
+    let cancelled = false
+    setEmployeeHasDirectReports(null)
+    void listMyDirectReports(companyId)
+      .then((list) => {
+        if (!cancelled) setEmployeeHasDirectReports(list.length > 0)
+      })
+      .catch(() => {
+        if (!cancelled) setEmployeeHasDirectReports(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, entry.membership.role])
+
+  const navItems = useMemo(() => {
+    const raw = companyNavItems(
+      companyId,
+      entry.membership,
+      entry.membership.role === 'employee'
+        ? { showTeamGoals: employeeHasDirectReports === true }
+        : undefined,
+    )
+    const preserveQuery =
+      location.pathname.includes('/employees/') ||
+      location.pathname.includes('/leave/') ||
+      location.pathname.includes('/learning/')
+    const suffix = preserveQuery ? location.search : ''
+    return raw.map((item) => {
+      if (item.kind === 'group') {
+        const parentTo =
+          item.parentTo &&
+          (item.parentTo.includes('/employees/') ||
+            item.parentTo.includes('/leave/') ||
+            item.parentTo.includes('/learning/'))
+            ? `${item.parentTo.split('?')[0]}${suffix}`
+            : item.parentTo
+        return {
+          ...item,
+          parentTo,
+          children: item.children.map((c) => ({
+            ...c,
+            to:
+              c.to.includes('/employees/') ||
+              c.to.includes('/leave/') ||
+              c.to.includes('/learning/')
+                ? `${c.to.split('?')[0]}${suffix}`
+                : c.to,
+          })),
+        }
+      }
+      return item
+    })
+  }, [companyId, entry.membership, employeeHasDirectReports, location.pathname, location.search])
 
   return (
     <RealtimeEventsProvider>
@@ -41,6 +103,7 @@ export function CompanyLayout() {
         companyName={displayCompany}
         navItems={navItems}
         topbarExtra={<NotificationsPanel companyId={companyId} />}
+        workspaceContext={{ companyId, role: entry.membership.role }}
       >
         <Outlet />
       </AppShell>

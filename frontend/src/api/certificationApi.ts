@@ -1,6 +1,11 @@
 import { apiFetch } from './client'
 import { companyPath } from './paths'
-import type { Certificate, CertProgress, CertTrack } from './types'
+import type {
+  Certificate,
+  CertificationProgressDashboard,
+  CertProgress,
+  CertTrack,
+} from './types'
 
 export function listCertTracks(companyId: string) {
   return apiFetch<CertTrack[]>(companyPath(companyId, '/certification/tracks'))
@@ -62,4 +67,8 @@ export function issueCertificate(
 
 export function listMyCertificates(companyId: string) {
   return apiFetch<Certificate[]>(companyPath(companyId, '/certification/certificates/me'))
+}
+
+export function getMyProgressDashboard(companyId: string) {
+  return apiFetch<CertificationProgressDashboard>(companyPath(companyId, '/certification/progress/me/dashboard'))
 }

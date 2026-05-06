@@ -10,6 +10,8 @@ from app.models.inbox import InboxTask
 from app.models.membership import CompanyMembership
 from app.models.user import User
 from app.schemas.shared_services import InboxTaskOut
+from app.services.employee_helpers import get_employee_for_user
+from app.services.profile_inbox_sync import sync_profile_inbox_tasks
 
 router = APIRouter(tags=["inbox"])
 
@@ -24,6 +26,10 @@ def list_inbox_tasks(
     db: Annotated[Session, Depends(get_db)],
 ) -> list[InboxTask]:
     user, _ = ctx
+    emp = get_employee_for_user(db, company_id, user.id)
+    if emp is not None:
+        sync_profile_inbox_tasks(db, emp)
+        db.commit()
     r = db.execute(
         select(InboxTask)
         .where(InboxTask.company_id == company_id, InboxTask.user_id == user.id)

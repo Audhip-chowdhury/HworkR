@@ -56,7 +56,7 @@ import {
   validateReconciliation,
   type PayrollReconciliationExpectedOut,
 } from '../../../api/compensationApi'
-import { listEmployees, updateEmployee, type Employee } from '../../../api/employeesApi'
+import { getMyEmployee, listEmployees, updateEmployee, type Employee } from '../../../api/employeesApi'
 import {
   listDepartments,
   listPositions,
@@ -67,7 +67,12 @@ import {
 import { AlertModal } from '../../../components/AlertModal'
 import { ToastNotification, type ToastItem } from '../../../components/ToastNotification'
 import styles from '../CompanyWorkspacePage.module.css'
-import { SimCashWorksheet, WORKSHEET_DEDUCTION_KEYS as DEDUCTION_KEYS, WORKSHEET_EARNINGS_KEYS as EARNINGS_KEYS } from './SimCashWorksheet'
+import {
+  SimCashWorksheet,
+  FIELD_LABELS,
+  WORKSHEET_DEDUCTION_KEYS as DEDUCTION_KEYS,
+  WORKSHEET_EARNINGS_KEYS as EARNINGS_KEYS,
+} from './SimCashWorksheet'
 import { ReconciliationWorksheet, type ReconciliationField } from './ReconciliationWorksheet'
 
 const SIMCASH_SHOW_ENGINE_KEY = 'hworkr_simcash_show_engine'
@@ -75,8 +80,30 @@ const RECON_SHOW_ENGINE_KEY = 'hworkr_reconciliation_show_engine'
 
 type Tab = 'salary' | 'runs' | 'grades' | 'merit' | 'reconciliation' | 'reimbursements' | 'payslips'
 
+type MeritSubTab = 'cycle' | 'proposals' | 'budget'
+
 const SUPPLEMENTAL_LINE_TYPES = ['reimbursement', 'adjustment', 'arrears', 'other'] as const
 type SupplementalLineType = (typeof SUPPLEMENTAL_LINE_TYPES)[number]
+
+/** Line types that are saved on the payslip but excluded from gross-cap validation (same as backend EXTRA_ONLY minus benefits). */
+const GROSS_EXCLUDED_SUPPLEMENTAL_TYPES: SupplementalLineType[] = ['reimbursement', 'adjustment', 'arrears']
+
+const SUPPLEMENTAL_EXTRA_LEDGER_KINDS = new Set(['reimbursement', 'arrears', 'off_cycle_adjustment', 'benefit_payment'])
+
+function ledgerEntryKindLabel(kind: string): string {
+  switch (kind) {
+    case 'reimbursement':
+      return 'Reimbursement'
+    case 'arrears':
+      return 'Arrears'
+    case 'off_cycle_adjustment':
+      return 'Adjustment'
+    case 'benefit_payment':
+      return 'Benefit payment'
+    default:
+      return kind
+  }
+}
 
 type SupplementalLineRow = {
   id: string
@@ -137,6 +164,33 @@ function formatPayRunOptionLabel(r: { year: number; month: number; department_na
   const kind = payRunKindLabel(r.run_kind)
   const tail = [kind, r.run_label?.trim() || null, r.pay_date?.trim() ? `pay ${r.pay_date}` : null].filter(Boolean).join(' · ')
   return tail ? `${cal} · ${batch} · ${tail}` : `${cal} · ${batch}`
+}
+
+/** User-facing month label for payslips (avoid internal "pay run" wording). */
+function formatPayslipViewerPeriodLabel(
+  p: Payslip,
+  run:
+    | { year: number; month: number; run_kind?: string | null; run_label?: string | null; pay_date?: string | null }
+    | undefined,
+): string {
+  if (!run) {
+    return new Date(p.created_at).toLocaleString('en-IN', { month: 'long', year: 'numeric' })
+  }
+  const cal = new Date(run.year, run.month - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' })
+  const kind = (run.run_kind || 'regular') !== 'regular' ? payRunKindLabel(run.run_kind) : null
+  const label = run.run_label?.trim()
+  const payDate = run.pay_date?.trim() ? `Payment date ${run.pay_date}` : null
+  const tail = [kind, label, payDate].filter(Boolean).join(' — ')
+  return tail ? `${cal} (${tail})` : cal
+}
+
+function jsonNumber(v: unknown): string {
+  if (typeof v === 'number' && !Number.isNaN(v)) return fmtSC(v)
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v)
+    if (Number.isFinite(n)) return fmtSC(n)
+  }
+  return '—'
 }
 
 function sessionGetJson<T>(key: string, fallback: T): T {
@@ -203,6 +257,18 @@ function activeBands(bands: CompensationGradeBand[]): CompensationGradeBand[] {
       String(b.effective_from) <= today &&
       (!b.effective_to || String(b.effective_to).trim() === '' || String(b.effective_to) >= today),
   )
+}
+
+function bandForOrgGrade(orgGrade: number, bands: CompensationGradeBand[]): CompensationGradeBand | null {
+  const candidates = bands
+    .filter((b) => {
+      if (b.org_position_grade_min == null) return false
+      const min = b.org_position_grade_min
+      const max = b.org_position_grade_max ?? min
+      return orgGrade >= min && orgGrade <= max
+    })
+    .sort((a, z) => String(z.effective_from).localeCompare(String(a.effective_from)))
+  return candidates[0] ?? null
 }
 
 function emptyNewGradeBandForm() {
@@ -429,12 +495,16 @@ export function PayrollPage() {
   const { companyId = '' } = useParams()
   const { myCompanies } = useAuth()
   const role = myCompanies.find((x) => x.company.id === companyId)?.membership.role ?? ''
-  const canConfigure =
-    role === 'company_admin' || role === 'compensation_analytics' || role === 'hr_ops'
-  const isPayAdmin = role === 'company_admin' || role === 'compensation_analytics'
+  /** Salary structures, pay runs, grades, merit, reconciliation (not HR Ops). */
+  const isPayrollAdmin = role === 'company_admin' || role === 'compensation_analytics'
+  const isCompensationSpecialist = role === 'compensation_analytics'
   const isHrOps = role === 'hr_ops'
+  /** Legacy name: admin-only configuration tabs. */
+  const canConfigure = isPayrollAdmin
+  /** SimCash / save payslip: compensation specialist only; others get a read-only payslip viewer. */
+  const canPayslipWorksheet = isCompensationSpecialist
   const payslipViewOnly = false
-  const canEditPayslip = canConfigure
+  const canEditPayslip = canPayslipWorksheet
 
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -443,6 +513,8 @@ export function PayrollPage() {
   const [structures, setStructures] = useState<SalaryStructure[]>([])
   const [runs, setRuns] = useState<Awaited<ReturnType<typeof listPayRuns>>>([])
   const [payslips, setPayslips] = useState<Payslip[]>([])
+  /** Which saved payslip the read-only (non–compensation) viewer shows. */
+  const [payslipViewerPayslipId, setPayslipViewerPayslipId] = useState('')
   const [employees, setEmployees] = useState<Employee[]>([])
 
   const [structureEmpId, setStructureEmpId] = useState('')
@@ -569,6 +641,7 @@ export function PayrollPage() {
 
   const [meritCycles, setMeritCycles] = useState<CompensationReviewCycle[]>([])
   const [meritCycleId, setMeritCycleId] = useState('')
+  const [meritSubTab, setMeritSubTab] = useState<MeritSubTab>('cycle')
   const [meritGuidelines, setMeritGuidelines] = useState<CompensationReviewGuideline[]>([])
   const [meritProposals, setMeritProposals] = useState<CompensationReviewProposal[]>([])
   const [meritBudget, setMeritBudget] = useState<CompensationReviewBudgetSummary | null>(null)
@@ -590,6 +663,11 @@ export function PayrollPage() {
   })
   const [supplementalLines, setSupplementalLines] = useState<SupplementalLineRow[]>([])
   const [payslipLedger, setPayslipLedger] = useState<PayrollLedgerEntry[]>([])
+  const [lastSavedPayslipCtx, setLastSavedPayslipCtx] = useState<{
+    payRunId: string
+    employeeId: string
+    payslipId: string
+  } | null>(null)
   const [proposalEditCtc, setProposalEditCtc] = useState<Record<string, string>>({})
   const [meritCycleEditBudget, setMeritCycleEditBudget] = useState('')
   const [meritCycleEditEffective, setMeritCycleEditEffective] = useState('')
@@ -617,6 +695,26 @@ export function PayrollPage() {
       })
     },
     [mergePayrollSearchParams],
+  )
+
+  const payRunById = useMemo(() => new Map(runs.map((r) => [r.id, r])), [runs])
+
+  const viewerPayslipsSorted = useMemo(() => {
+    if (canPayslipWorksheet) return []
+    return [...payslips].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+  }, [payslips, canPayslipWorksheet])
+
+  useEffect(() => {
+    if (canPayslipWorksheet) return
+    setPayslipViewerPayslipId((cur) => {
+      if (cur && viewerPayslipsSorted.some((p) => p.id === cur)) return cur
+      return viewerPayslipsSorted[0]?.id ?? ''
+    })
+  }, [canPayslipWorksheet, viewerPayslipsSorted])
+
+  const selectedViewerPayslip = useMemo(
+    () => payslips.find((p) => p.id === payslipViewerPayslipId) ?? null,
+    [payslips, payslipViewerPayslipId],
   )
 
   async function computePayRunPayslipProgress(
@@ -685,14 +783,25 @@ export function PayrollPage() {
       t === 'reimbursements' ||
       t === 'reconciliation'
     ) {
-      if ((t === 'grades' || t === 'merit' || t === 'reimbursements' || t === 'reconciliation') && !canConfigure) setTab('payslips')
-      else setTab(t as Tab)
+      if (
+        (t === 'salary' ||
+          t === 'runs' ||
+          t === 'grades' ||
+          t === 'merit' ||
+          t === 'reimbursements' ||
+          t === 'reconciliation') &&
+        !isPayrollAdmin
+      ) {
+        setTab('payslips')
+      } else {
+        setTab(t as Tab)
+      }
     }
     const pr = searchParams.get('pay_run_id')
     const emp = searchParams.get('employee_id')
     if (pr) setPayRunId(pr)
     if (emp) setPayrollEmpId(emp)
-  }, [searchParams, canConfigure])
+  }, [searchParams, isPayrollAdmin])
 
   useEffect(() => {
     if (tab !== 'reconciliation' || runs.length === 0) return
@@ -741,7 +850,8 @@ export function PayrollPage() {
       setMeritCycles(c)
       setMeritCycleId((prev) => {
         if (prev && c.some((x) => x.id === prev)) return prev
-        return c[0]?.id ?? ''
+        // Do not auto-pick the first cycle: user must choose so empty-state copy matches the UI.
+        return ''
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load review cycles')
@@ -812,10 +922,10 @@ export function PayrollPage() {
         listPayRuns(companyId),
         listPayslips(companyId),
         listSalaryStructureAudit(companyId).catch(() => [] as SalaryStructureAuditEntry[]),
-        canConfigure
+        isPayrollAdmin
           ? listGradeBands(companyId).catch(() => [] as CompensationGradeBand[])
           : Promise.resolve([] as CompensationGradeBand[]),
-        canConfigure
+        isPayrollAdmin
           ? listGradeBandAudit(companyId).catch(() => [] as GradeBandAuditEntry[])
           : Promise.resolve([] as GradeBandAuditEntry[]),
       ])
@@ -860,7 +970,7 @@ export function PayrollPage() {
   }, [companyId])
 
   useEffect(() => {
-    if (!companyId || tab !== 'payslips' || !canConfigure) return
+    if (!companyId || tab !== 'payslips' || !canPayslipWorksheet) return
     if (searchParams.get('pay_run_id')) return
     if (payRunId) return
     if (!runs.length) return
@@ -872,22 +982,41 @@ export function PayrollPage() {
     return () => {
       cancelled = true
     }
-  }, [companyId, tab, canConfigure, runs, payRunId, searchParams])
+  }, [companyId, tab, canPayslipWorksheet, runs, payRunId, searchParams])
 
   useEffect(() => {
-    if (!companyId || !canConfigure) return
-    let cancelled = false
-    void listEmployees(companyId)
-      .then((rows) => {
-        if (!cancelled) setEmployees(rows)
-      })
-      .catch(() => {
-        if (!cancelled) setEmployees([])
-      })
-    return () => {
-      cancelled = true
+    if (!companyId) return
+    if (isPayrollAdmin) {
+      let cancelled = false
+      void listEmployees(companyId)
+        .then((rows) => {
+          if (!cancelled) setEmployees(rows)
+        })
+        .catch(() => {
+          if (!cancelled) setEmployees([])
+        })
+      return () => {
+        cancelled = true
+      }
     }
-  }, [companyId, canConfigure])
+    if (isHrOps) {
+      let cancelled = false
+      void getMyEmployee(companyId)
+        .then((e) => {
+          if (!cancelled) {
+            setEmployees([e])
+            setPayrollEmpId((prev) => (prev ? prev : e.id))
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setEmployees([])
+        })
+      return () => {
+        cancelled = true
+      }
+    }
+    setEmployees([])
+  }, [companyId, isPayrollAdmin, isHrOps])
 
   useEffect(() => {
     if (!companyId || !canConfigure) return
@@ -995,11 +1124,17 @@ export function PayrollPage() {
     return [...new Set(codes)].sort()
   }, [gradeBands])
 
-  /** Unique sorted org grade numbers from all positions across the company. */
+  /** Unique sorted org grade numbers from positions + configured grade bands. */
   const allOrgGrades = useMemo(() => {
-    const nums = allPositions.map((p) => p.grade).filter((g) => g != null && Number.isFinite(g))
+    const fromPositions = allPositions
+      .map((p) => p.grade)
+      .filter((g): g is number => g != null && Number.isFinite(g))
+    const fromBands = gradeBands
+      .flatMap((b) => [b.org_position_grade_min, b.org_position_grade_max])
+      .filter((g): g is number => g != null && Number.isFinite(g))
+    const nums = [...fromPositions, ...fromBands]
     return [...new Set(nums)].sort((a, b) => a - b)
-  }, [allPositions])
+  }, [allPositions, gradeBands])
 
   /** Org grades from positions that have no grade band configured for them. */
   const unconfiguredOrgGrades = useMemo(() => {
@@ -1136,20 +1271,40 @@ export function PayrollPage() {
     return Math.round((sum + Number.EPSILON) * 100) / 100
   }, [payrollEmpId, benefitPlans, benefitEnrollments])
 
-  const reimbursementTotalDisplay = useMemo(
-    () =>
-      supplementalLines
-        .filter((r) => r.lineType === 'reimbursement')
+  const supplementalExtraSimCashLines = useMemo(() => {
+    const labels: Partial<Record<SupplementalLineType, string>> = {
+      reimbursement: 'Reimbursements (supplemental)',
+      adjustment: 'Adjustments (supplemental)',
+      arrears: 'Arrears (supplemental)',
+    }
+    const out: { label: string; amount: number }[] = []
+    for (const t of GROSS_EXCLUDED_SUPPLEMENTAL_TYPES) {
+      const sum = supplementalLines
+        .filter((r) => r.lineType === t)
         .reduce((s, r) => {
           const n = Number(String(r.amount).trim())
           return s + (Number.isFinite(n) && n > 0 ? n : 0)
-        }, 0),
-    [supplementalLines],
-  )
+        }, 0)
+      const label = labels[t]
+      if (label && sum > 0) out.push({ label, amount: sum })
+    }
+    return out
+  }, [supplementalLines])
 
   const selectedPayslip = useMemo(
     () => payslips.find((x) => x.pay_run_id === payRunId && x.employee_id === payrollEmpId),
     [payslips, payRunId, payrollEmpId],
+  )
+  const activePayslipId = useMemo(() => {
+    if (selectedPayslip?.id) return selectedPayslip.id
+    if (lastSavedPayslipCtx && lastSavedPayslipCtx.payRunId === payRunId && lastSavedPayslipCtx.employeeId === payrollEmpId) {
+      return lastSavedPayslipCtx.payslipId
+    }
+    return ''
+  }, [selectedPayslip?.id, lastSavedPayslipCtx, payRunId, payrollEmpId])
+  const supplementalExtraLedgerRows = useMemo(
+    () => payslipLedger.filter((le) => SUPPLEMENTAL_EXTRA_LEDGER_KINDS.has(le.entry_kind)),
+    [payslipLedger],
   )
 
   useEffect(() => {
@@ -1163,12 +1318,41 @@ export function PayrollPage() {
   }, [selectedPayslip])
 
   useEffect(() => {
-    if (!companyId || tab !== 'payslips' || !selectedPayslip?.id) {
+    if (!companyId || !payRunId || !payrollEmpId) return
+    if (selectedPayslip) return
+    if (tab !== 'payslips' && tab !== 'reimbursements') return
+    let cancelled = false
+    void listPayslips(companyId, payrollEmpId, payRunId)
+      .then((rows) => {
+        if (cancelled || !Array.isArray(rows) || rows.length === 0) return
+        const latest = rows
+          .slice()
+          .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0]
+        const ej = latest?.earnings_json
+        if (ej && typeof ej === 'object') {
+          setSupplementalLines(parseSupplementalLinesFromEarnings(ej as Record<string, unknown>))
+        } else {
+          setSupplementalLines([])
+        }
+        if (latest?.id) {
+          setLastSavedPayslipCtx({ payRunId, employeeId: payrollEmpId, payslipId: latest.id })
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSupplementalLines([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, payRunId, payrollEmpId, selectedPayslip, tab])
+
+  useEffect(() => {
+    if (!companyId || (tab !== 'payslips' && tab !== 'reimbursements') || !activePayslipId) {
       setPayslipLedger([])
       return
     }
     let cancelled = false
-    void listPayslipLedgerEntries(companyId, selectedPayslip.id)
+    void listPayslipLedgerEntries(companyId, activePayslipId)
       .then((rows) => {
         if (!cancelled) setPayslipLedger(Array.isArray(rows) ? rows : [])
       })
@@ -1178,7 +1362,7 @@ export function PayrollPage() {
     return () => {
       cancelled = true
     }
-  }, [companyId, tab, selectedPayslip?.id])
+  }, [companyId, tab, activePayslipId])
 
   useEffect(() => {
     if (!payslipViewOnly || !payRunId || !payrollEmpId) return
@@ -1234,10 +1418,14 @@ export function PayrollPage() {
     if (!canConfigure || !gradeBands.length || !structureEmpId) return null
     const ctc = Number(String(ctcAnnual).replace(/,/g, '').trim())
     if (!Number.isFinite(ctc) || ctc <= 0) return null
+    const selectedGrade = Number(salaryGradeInput.trim())
+    if (!Number.isFinite(selectedGrade) || selectedGrade < 1) {
+      return { ctc, selectedGrade: null as number | null, band: null as CompensationGradeBand | null, hasBands: true }
+    }
     const current = activeBands(gradeBands)
-    const band = matchGradeBand(ctc, current)
-    return { ctc, band, hasBands: current.length > 0 }
-  }, [canConfigure, gradeBands, structureEmpId, ctcAnnual])
+    const band = bandForOrgGrade(selectedGrade, current)
+    return { ctc, selectedGrade, band, hasBands: current.length > 0 }
+  }, [canConfigure, gradeBands, structureEmpId, ctcAnnual, salaryGradeInput])
 
   const ctcBandAlignment = gradeCtxInfo
     ? gradeCtxInfo.band
@@ -1250,7 +1438,7 @@ export function PayrollPage() {
   const leaveDeduction = form.leave_deduction
   const otherDeductions = form.other_deductions
   useEffect(() => {
-    if (!companyId || !payrollEmpId || !canConfigure || payslipViewOnly) {
+    if (!companyId || !payrollEmpId || !canPayslipWorksheet || payslipViewOnly) {
       setEnginePreview(null)
       setEngineFetchError(null)
       setEngineLoading(false)
@@ -1289,7 +1477,7 @@ export function PayrollPage() {
       cancelled = true
       window.clearTimeout(t)
     }
-  }, [companyId, payrollEmpId, canConfigure, payslipViewOnly, structures, loanRecovery, leaveDeduction, otherDeductions])
+  }, [companyId, payrollEmpId, canPayslipWorksheet, payslipViewOnly, structures, loanRecovery, leaveDeduction, otherDeductions])
 
   function persistShowEngine(show: boolean) {
     setShowEngineColumn(show)
@@ -1576,7 +1764,7 @@ export function PayrollPage() {
     setError(null)
     try {
       const { earnings_json, deductions_json, gross, net } = buildEarningsDeductionsForSave()
-      await createPayslip(companyId, {
+      const savedPayslip = await createPayslip(companyId, {
         employee_id: payrollEmpId,
         pay_run_id: payRunId,
         gross,
@@ -1584,6 +1772,7 @@ export function PayrollPage() {
         earnings_json,
         deductions_json,
       })
+      setLastSavedPayslipCtx({ payRunId, employeeId: payrollEmpId, payslipId: savedPayslip.id })
       const refreshed = await refresh()
       await loadPeriodOverview()
       const prog = await computePayRunPayslipProgress(payRunId, refreshed?.runs)
@@ -1934,26 +2123,6 @@ export function PayrollPage() {
                       <div className={styles.fieldLocked}>{structureEffectiveFrom || '—'}</div>
                     )}
                   </label>
-                  <label className={styles.hint}>
-                    Grade (org position)
-                    {salaryFieldsEditable && salaryPositionId ? (
-                      <select
-                        className={styles.input}
-                        value={salaryGradeInput}
-                        onChange={(e) => setSalaryGradeInput(e.target.value)}
-                        aria-label="Grade for org position"
-                      >
-                        <option value="">— Select grade —</option>
-                        {allOrgGrades.map((g) => (
-                          <option key={g} value={String(g)}>Grade {g}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <div className={styles.fieldLocked}>
-                        {salaryPositionId ? (salaryGradeInput ? `Grade ${salaryGradeInput}` : '—') : '—'}
-                      </div>
-                    )}
-                  </label>
                 </div>
                 {gradeCtxInfo ? (
                   <div
@@ -1973,6 +2142,18 @@ export function PayrollPage() {
                       const pct = bandPosPct(gradeCtxInfo.ctc, b)
                       const aboveMax = gradeCtxInfo.ctc > b.max_annual
                       const belowMin = gradeCtxInfo.ctc < b.min_annual
+                      const clampedPct = Math.max(0, Math.min(100, pct))
+                      const outOfRange = aboveMax || belowMin
+                      const markerColor = outOfRange ? '#b45309' : 'var(--color-primary, #1b4f72)'
+                      const range = Math.max(1, b.max_annual - b.min_annual)
+                      const overflowAbovePct = aboveMax
+                        ? Math.min(40, ((gradeCtxInfo.ctc - b.max_annual) / range) * 100)
+                        : 0
+                      const markerLeft = aboveMax
+                        ? `calc(100% + ${overflowAbovePct}%)`
+                        : belowMin
+                          ? '0%'
+                          : `${clampedPct}%`
                       return (
                         <>
                           <span style={{ fontWeight: 600 }}>Grade: {b.band_code}</span>
@@ -1980,22 +2161,102 @@ export function PayrollPage() {
                           <span className={styles.muted}>{fmtSC(b.min_annual)} – {fmtSC(b.max_annual)}</span>
                           {' | '}
                           <span>Position in band: {pct.toFixed(0)}%</span>
-                          <div style={{ marginTop: '0.35rem', height: 6, background: 'rgba(0,0,0,0.1)', borderRadius: 3, maxWidth: 260, position: 'relative' }}>
-                            <div style={{ position: 'absolute', left: `${Math.min(100, pct)}%`, top: -3, width: 12, height: 12, borderRadius: '50%', background: 'var(--accent, #1b4f72)', transform: 'translateX(-50%)' }} />
+                          <div
+                            role="img"
+                            aria-label={`CTC ${fmtSC(gradeCtxInfo.ctc)} sits at ${pct.toFixed(0)}% of the selected ${b.band_code} band (${fmtSC(b.min_annual)} to ${fmtSC(b.max_annual)})`}
+                            style={{ marginTop: '1.5rem', maxWidth: '26rem' }}
+                          >
+                            <div style={{ position: 'relative', height: 8, borderRadius: 999, background: 'rgba(27,79,114,0.12)', overflow: 'visible' }}>
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: 0,
+                                  top: 0,
+                                  bottom: 0,
+                                  width: `${aboveMax ? 100 : belowMin ? 0 : clampedPct}%`,
+                                  borderRadius: '999px 0 0 999px',
+                                  background: 'rgba(27,79,114,0.45)',
+                                  transition: 'width 0.18s ease',
+                                }}
+                              />
+                              {aboveMax ? (
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    left: '100%',
+                                    top: 0,
+                                    bottom: 0,
+                                    width: `${overflowAbovePct}%`,
+                                    borderRadius: '0 999px 999px 0',
+                                    background:
+                                      'repeating-linear-gradient(135deg, rgba(180,83,9,0.45) 0 6px, rgba(180,83,9,0.2) 6px 12px)',
+                                    transition: 'width 0.18s ease',
+                                  }}
+                                />
+                              ) : null}
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: markerLeft,
+                                  top: -4,
+                                  width: 2,
+                                  height: 16,
+                                  background: markerColor,
+                                  transform: 'translateX(-50%)',
+                                  transition: 'left 0.18s ease',
+                                  pointerEvents: 'none',
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    position: 'absolute',
+                                    top: '-1.55rem',
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    background: markerColor,
+                                    color: '#fff',
+                                    fontWeight: 600,
+                                    fontSize: '0.7rem',
+                                    padding: '0.1rem 0.45rem',
+                                    borderRadius: 999,
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {fmtSC(gradeCtxInfo.ctc)}
+                                </span>
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                              <span>{fmtSC(b.min_annual)}</span>
+                              <span>{fmtSC(b.max_annual)}</span>
+                            </div>
                           </div>
                           {aboveMax ? (
-                            <div style={{ color: '#b45309', marginTop: '0.25rem' }}>
-                              Above {b.band_code} maximum by {fmtSC(gradeCtxInfo.ctc - b.max_annual)} — consider promotion to next band
+                            <div
+                              style={{
+                                color: '#9a3412',
+                                marginTop: '0.5rem',
+                                fontWeight: 600,
+                                padding: '0.25rem 0.45rem',
+                                borderRadius: 6,
+                                display: 'inline-block',
+                                background: 'repeating-linear-gradient(135deg, rgba(180,83,9,0.15) 0 6px, rgba(180,83,9,0.08) 6px 12px)',
+                                border: '1px solid rgba(180,83,9,0.35)',
+                              }}
+                            >
+                              Above {b.band_code} maximum by {fmtSC(gradeCtxInfo.ctc - b.max_annual)}
                             </div>
                           ) : belowMin ? (
-                            <div style={{ color: '#b45309', marginTop: '0.25rem' }}>
-                              Below {b.band_code} minimum by {fmtSC(b.min_annual - gradeCtxInfo.ctc)}
+                            <div style={{ color: '#b45309', marginTop: '0.5rem', fontWeight: 600 }}>
+                              {'\u26A0\uFE0F'} No grade band found for this CTC (below selected grade minimum by {fmtSC(b.min_annual - gradeCtxInfo.ctc)})
                             </div>
                           ) : null}
                         </>
                       )
                     })() : (
-                      <span className={styles.muted}>No matching grade band for this CTC — check Grade structure tab.</span>
+                      <span style={{ color: '#b45309', fontWeight: 600 }}>
+                        {'\u26A0\uFE0F'} No grade band found for the selected grade — create one in Grade structure tab before saving.
+                      </span>
                     )}
                   </div>
                 ) : null}
@@ -2089,14 +2350,14 @@ export function PayrollPage() {
           <h3 className={styles.h3}>Pay runs</h3>
           <p className={styles.flowHint}>
             Only departments with a <strong>pay run</strong> for the selected month are listed. Expand a row for a searchable employee table.{' '}
-            {isPayAdmin
+            {isPayrollAdmin
               ? 'Create a pay run for a department first; filters below apply to that list.'
               : isHrOps
                 ? 'Use filters to narrow rows, then open an employee or use Release salary when appropriate.'
                 : 'Use filters to narrow rows, then open an employee to view their payslip.'}
           </p>
 
-          {isPayAdmin ? (
+          {isPayrollAdmin ? (
             <div style={{ marginBottom: '1.25rem' }}>
               <div className={styles.inline} style={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end' }}>
                 <label className={styles.hint}>
@@ -2344,7 +2605,7 @@ export function PayrollPage() {
             <p className={styles.muted}>Loading…</p>
           ) : payRunOverview.length === 0 ? (
             <p className={styles.muted}>
-              {isPayAdmin
+              {isPayrollAdmin
                 ? 'No regular department pay runs for this month in the overview yet. Off-cycle runs appear in the table above; create a regular run per department for this grid.'
                 : 'No pay runs for this month yet.'}
             </p>
@@ -2916,22 +3177,84 @@ export function PayrollPage() {
       {canConfigure && tab === 'merit' ? (
         <section className={styles.card}>
           <h3 className={styles.h3}>Merit / increment cycles</h3>
-          <p className={styles.flowHint}>
-            Set a cycle budget and per–grade-band increase bands as guidance, add employee proposals, then move proposals through <strong>draft → submitted → approved</strong>.
-            <strong> Apply approved</strong> creates a new SimCash <code>SalaryStructure</code> for each approved row using the cycle&apos;s effective-from date (required before apply).
+          <p className={styles.flowHint} style={{ marginBottom: '1rem' }}>
+            Configure a merit review cycle, record proposed annual CTC by employee, route proposals through approval, and
+            apply approved amounts to SimCash salary structures on the cycle effective date.
           </p>
           {meritLoading ? <p className={styles.muted}>Loading…</p> : null}
 
-          <div
-            style={{
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              padding: '1rem',
-              marginBottom: '1rem',
-              background: 'rgba(0,0,0,0.02)',
-            }}
-          >
-            <h4 className={styles.h3} style={{ marginTop: 0 }}>Create cycle</h4>
+          <div className={styles.meritFlow}>
+            <div className={styles.meritBlock}>
+              <div className={styles.meritBlockHeader}>
+                <h4 className={styles.meritBlockTitle}>Active review cycle</h4>
+              </div>
+              <p className={styles.meritBlockSub}>Selection applies to all subtabs.</p>
+              <label className={styles.hint} style={{ display: 'block', marginBottom: '0.5rem' }}>
+                Active cycle
+                <select
+                  className={styles.input}
+                  style={{ maxWidth: 'min(100%, 520px)' }}
+                  value={meritCycleId}
+                  onChange={(e) => setMeritCycleId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {meritCycles.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label} ({c.fiscal_year}) · {c.state}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!selectedMeritCycle ? (
+                <p className={styles.meritEmpty}>
+                  {meritCycles.length
+                    ? 'Select a review cycle to use the subtabs below.'
+                    : 'No review cycles exist. Create one under Cycle setup.'}
+                </p>
+              ) : null}
+            </div>
+
+            <div className={styles.meritTabBar} role="tablist" aria-label="Merit review">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={meritSubTab === 'cycle'}
+                className={`${styles.meritTabBtn}${meritSubTab === 'cycle' ? ` ${styles.meritTabBtnActive}` : ''}`}
+                onClick={() => setMeritSubTab('cycle')}
+              >
+                Cycle setup
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={meritSubTab === 'proposals'}
+                className={`${styles.meritTabBtn}${meritSubTab === 'proposals' ? ` ${styles.meritTabBtnActive}` : ''}`}
+                onClick={() => setMeritSubTab('proposals')}
+              >
+                Proposals
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={meritSubTab === 'budget'}
+                className={`${styles.meritTabBtn}${meritSubTab === 'budget' ? ` ${styles.meritTabBtnActive}` : ''}`}
+                onClick={() => setMeritSubTab('budget')}
+              >
+                Budget &amp; apply
+              </button>
+            </div>
+
+            {meritSubTab === 'cycle' ? (
+              <div className={styles.meritTabPanel} role="tabpanel">
+            <div className={`${styles.meritBlock} ${styles.meritBlockTint}`}>
+              <div className={styles.meritBlockHeader}>
+                <h4 className={styles.meritBlockTitle}>Create review cycle</h4>
+              </div>
+              <p className={styles.meritBlockSub}>
+                Label and fiscal year are required. Budget, currency, effective date, and notes are optional at creation and
+                may be edited later under cycle parameters.
+              </p>
+              <div className={styles.meritInnerCard}>
             <div className={styles.inline} style={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end' }}>
               <label className={styles.hint}>
                 Label
@@ -3022,40 +3345,27 @@ export function PayrollPage() {
                 Create cycle
               </button>
             </div>
+              </div>
           </div>
 
-          <label className={styles.hint} style={{ display: 'block', marginBottom: '1rem' }}>
-            Active cycle
-            <select
-              className={styles.input}
-              style={{ maxWidth: 520 }}
-              value={meritCycleId}
-              onChange={(e) => setMeritCycleId(e.target.value)}
-            >
-              <option value="">—</option>
-              {meritCycles.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label} ({c.fiscal_year}) · {c.state}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {!selectedMeritCycle ? (
-            <p className={styles.muted}>Select or create a cycle to manage guidelines and proposals.</p>
-          ) : (
+            {selectedMeritCycle ? (
             <>
-              <div style={{ marginBottom: '1rem' }}>
-                <p style={{ margin: '0 0 0.5rem' }}>
-                  <strong>State:</strong> {selectedMeritCycle.state}
-                  {selectedMeritCycle.budget_amount != null ? (
-                    <span className={styles.muted}>
-                      {' '}
-                      · Budget {selectedMeritCycle.budget_currency} {selectedMeritCycle.budget_amount}
-                    </span>
-                  ) : null}
-                </p>
-                <div className={styles.inline} style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div className={styles.meritBlock}>
+              <div className={styles.meritBlockHeader}>
+                <h4 className={styles.meritBlockTitle}>Cycle status</h4>
+              </div>
+              <p className={styles.meritBlockSub}>
+                Draft: configuration only. Open: proposals may be submitted and approved. Closed: cycle locked.
+              </p>
+              <p style={{ margin: '0 0 0.5rem' }}>
+                <span className={styles.meritStatePill}>{selectedMeritCycle.state}</span>
+                {selectedMeritCycle.budget_amount != null ? (
+                  <span className={styles.muted} style={{ marginLeft: '0.5rem' }}>
+                    · Budget {selectedMeritCycle.budget_currency} {selectedMeritCycle.budget_amount}
+                  </span>
+                ) : null}
+              </p>
+                <div className={styles.meritToolbar} style={{ marginTop: 0, marginBottom: 0 }}>
                   <button
                     type="button"
                     className={styles.btnSm}
@@ -3117,17 +3427,17 @@ export function PayrollPage() {
                     Close cycle
                   </button>
                 </div>
-              </div>
+            </div>
 
-              <div
-                style={{
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  padding: '1rem',
-                  marginBottom: '1rem',
-                }}
-              >
-                <h4 className={styles.h3} style={{ marginTop: 0 }}>Cycle settings (budget & effective date)</h4>
+            <div className={styles.meritBlock}>
+              <div className={styles.meritBlockHeader}>
+                <h4 className={styles.meritBlockTitle}>Cycle parameters</h4>
+              </div>
+              <p className={styles.meritBlockSub}>
+                Merit pool budget cap (optional). Effective date is required before applying approved proposals to salary
+                structures.
+              </p>
+              <div className={styles.meritInnerCard}>
                 <div className={styles.inline} style={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end' }}>
                   <label className={styles.hint}>
                     Budget amount
@@ -3172,76 +3482,26 @@ export function PayrollPage() {
                   </button>
                 </div>
               </div>
+            </div>
+            </>
+            ) : (
+              <p className={styles.meritEmpty} style={{ marginTop: '0.75rem' }}>
+                Select an active review cycle to edit cycle status and parameters.
+              </p>
+            )}
 
-              {meritBudget ? (
-                <div
-                  style={{
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: '1rem',
-                    marginBottom: '1rem',
-                    background: 'rgba(0,0,0,0.02)',
-                  }}
-                >
-                  <h4 className={styles.h3} style={{ marginTop: 0 }}>Budget summary</h4>
-                  <p style={{ margin: '0.25rem 0' }} className={styles.muted}>
-                    Approved increase total: {meritBudget.budget_currency} {meritBudget.approved_increase_total.toFixed(0)} ({meritBudget.approved_count}{' '}
-                    employees)
-                  </p>
-                  <p style={{ margin: '0.25rem 0' }} className={styles.muted}>
-                    Submitted (pending) increase total: {meritBudget.budget_currency}{' '}
-                    {meritBudget.submitted_increase_total.toFixed(0)} ({meritBudget.submitted_pending_count} proposals)
-                  </p>
-                  <p style={{ margin: '0.25rem 0' }} className={styles.muted}>
-                    Employees hitting band ceiling:{' '}
-                    <strong style={{ color: meritBandCeilingCount > 0 ? '#b45309' : undefined }}>
-                      {meritBandCeilingCount}
-                    </strong>
-                    {meritBandCeilingCount > 0 ? ' — may need promotion or band adjustment' : ''}
-                  </p>
-                  {meritBudget.budget_amount != null ? (
-                    <p style={{ margin: '0.25rem 0' }}>
-                      Cycle budget cap: {meritBudget.budget_currency} {meritBudget.budget_amount}
-                    </p>
-                  ) : (
-                    <p style={{ margin: '0.25rem 0' }} className={styles.muted}>
-                      No cycle budget set — totals are informational only.
-                    </p>
-                  )}
-                </div>
-              ) : null}
-
-              <div className={styles.inline} style={{ marginBottom: '1rem' }}>
-                <button
-                  type="button"
-                  className={styles.btnSm}
-                  disabled={pending || !companyId}
-                  onClick={() => {
-                    if (!companyId) return
-                    if (!window.confirm('Create new salary structures for all approved proposals that are not yet applied?')) return
-                    setPending(true)
-                    setError(null)
-                    void applyApprovedCompensationReviewProposals(companyId, meritCycleId)
-                      .then((res) => {
-                        void loadMeritCycleDetails()
-                        void refresh()
-                        if (res.count === 0) {
-                          window.alert(
-                            'No new structures were created. Approved proposals may already be applied, or employees may be missing a salary structure / cycle effective-from.',
-                          )
-                        }
-                      })
-                      .catch((err) => setError(err instanceof Error ? err.message : 'Apply failed'))
-                      .finally(() => setPending(false))
-                  }}
-                >
-                  Apply approved to salary structures
-                </button>
               </div>
-
-              <h4 className={styles.h3}>Guidelines by band</h4>
-              <p className={styles.muted} style={{ fontSize: '0.875rem', marginTop: 0 }}>
-                Min/max are percentages (0–100). Map proposals to a <code>band_code</code> manually when creating the proposal.
+            ) : meritSubTab === 'proposals' ? (
+              <div className={styles.meritTabPanel} role="tabpanel">
+            {selectedMeritCycle ? (
+            <>
+            <div className={`${styles.meritBlock} ${styles.meritBlockTint}`}>
+              <div className={styles.meritBlockHeader}>
+                <h4 className={styles.meritBlockTitle}>Merit guidelines by pay band</h4>
+              </div>
+              <p className={styles.meritBlockSub}>
+                Reference ranges for minimum and maximum merit increase percentage by band code. Non-binding; assign band
+                code and amounts per proposal below.
               </p>
               <div className={styles.inline} style={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '1rem' }}>
                 <label className={styles.hint}>
@@ -3366,8 +3626,16 @@ export function PayrollPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
 
-              <h4 className={styles.h3}>Proposals</h4>
+            <div className={styles.meritBlock}>
+              <div className={styles.meritBlockHeader}>
+                <h4 className={styles.meritBlockTitle}>Compensation proposals</h4>
+              </div>
+              <p className={styles.meritBlockSub}>
+                One proposal per employee per cycle. Workflow: draft; submit when cycle is open; approve or reject.
+                Rejected proposals return to draft for revision.
+              </p>
               <div className={styles.inline} style={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '1rem' }}>
                 <label className={styles.hint}>
                   Employee
@@ -3627,8 +3895,127 @@ export function PayrollPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
             </>
-          )}
+            ) : (
+              <p className={styles.meritEmpty}>Select an active review cycle to manage guidelines and proposals.</p>
+            )}
+
+              </div>
+            ) : (
+              <div className={styles.meritTabPanel} role="tabpanel">
+            {selectedMeritCycle ? (
+            <>
+            {meritBudget ? (
+              <div className={styles.meritBlock}>
+                <div className={styles.meritBlockHeader}>
+                  <h4 className={styles.meritBlockTitle}>Merit budget summary</h4>
+                </div>
+                <p className={styles.meritBlockSub}>
+                  Increase totals aggregate max(proposed CTC − baseline CTC, 0) by proposal status. Baseline is current CTC
+                  at proposal creation. Approved count includes rows with zero incremental cost.
+                </p>
+                <div className={styles.meritInnerCard}>
+                  <div className={styles.meritBudgetGrid}>
+                    <p className={styles.meritBudgetItem}>
+                      Approved incremental amount
+                      <span className={styles.meritBudgetValue}>
+                        {meritBudget.budget_currency} {meritBudget.approved_increase_total.toFixed(0)}
+                        <span className={styles.muted} style={{ fontWeight: 500, fontSize: '0.8rem' }}>
+                          {' '}
+                          · {meritBudget.approved_count} {meritBudget.approved_count === 1 ? 'row' : 'rows'}
+                        </span>
+                      </span>
+                    </p>
+                    <p className={styles.meritBudgetItem}>
+                      Submitted (pending approval)
+                      <span className={styles.meritBudgetValue}>
+                        {meritBudget.budget_currency} {meritBudget.submitted_increase_total.toFixed(0)}
+                        <span className={styles.muted} style={{ fontWeight: 500, fontSize: '0.8rem' }}>
+                          {' '}
+                          · {meritBudget.submitted_pending_count} {meritBudget.submitted_pending_count === 1 ? 'proposal' : 'proposals'}
+                        </span>
+                      </span>
+                    </p>
+                    <p className={styles.meritBudgetItem}>
+                      Above pay band ceiling
+                      <span
+                        className={styles.meritBudgetValue}
+                        style={meritBandCeilingCount > 0 ? { color: '#b45309' } : undefined}
+                      >
+                        {meritBandCeilingCount}
+                        {meritBandCeilingCount > 0 ? ' — review band / promotion' : ' — none'}
+                      </span>
+                    </p>
+                    <p className={styles.meritBudgetItem}>
+                      Cycle budget cap
+                      {meritBudget.budget_amount != null ? (
+                        <span className={styles.meritBudgetValue}>
+                          {meritBudget.budget_currency} {meritBudget.budget_amount}
+                        </span>
+                      ) : (
+                        <span className={styles.muted} style={{ display: 'block', marginTop: 4, fontWeight: 500 }}>
+                          Not configured
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  {meritBudget.approved_count > 0 && Math.abs(meritBudget.approved_increase_total) < 0.5 ? (
+                    <p className={styles.meritCallout} style={{ marginTop: '0.75rem' }}>
+                      Approved incremental cost is zero: proposed CTC equals baseline at proposal creation, or net change
+                      is non-positive. Reject to return to draft and revise proposed CTC, or edit while status remains draft.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <div className={styles.meritBlock}>
+              <div className={styles.meritBlockHeader}>
+                <h4 className={styles.meritBlockTitle}>Apply approved merit</h4>
+              </div>
+              <div className={styles.meritApplyPanel}>
+                <p className={styles.meritApplyText}>
+                  Persists approved proposals as new SimCash salary structure rows effective on the cycle effective date.
+                  Skips employees without a prior salary structure or proposals already applied. Verify outcomes under Salary
+                  structures.
+                </p>
+                <button
+                  type="button"
+                  className={styles.btn}
+                  style={{ fontSize: '0.9rem' }}
+                  disabled={pending || !companyId}
+                  onClick={() => {
+                    if (!companyId) return
+                    if (!window.confirm('Create new salary structures for all approved proposals that are not yet applied?')) return
+                    setPending(true)
+                    setError(null)
+                    void applyApprovedCompensationReviewProposals(companyId, meritCycleId)
+                      .then((res) => {
+                        void loadMeritCycleDetails()
+                        void refresh()
+                        if (res.count === 0) {
+                          window.alert(
+                            'No new structures were created. Approved proposals may already be applied, or employees may be missing a salary structure / cycle effective-from.',
+                          )
+                        }
+                      })
+                      .catch((err) => setError(err instanceof Error ? err.message : 'Apply failed'))
+                      .finally(() => setPending(false))
+                  }}
+                >
+                  Apply approved to salary structures
+                </button>
+              </div>
+            </div>
+            </>
+            ) : (
+              <p className={styles.meritEmpty}>Select an active review cycle for budget summary and apply.</p>
+            )}
+
+              </div>
+            )}
+          </div>
         </section>
       ) : null}
 
@@ -3723,8 +4110,8 @@ export function PayrollPage() {
         <section className={styles.card}>
           <h3 className={styles.h3}>Reimbursements &amp; supplemental lines</h3>
           <p className={styles.flowHint} style={{ marginBottom: '0.75rem' }}>
-            Pick a pay run and employee, then add reimbursement/supplemental rows. These lines are saved under{' '}
-            <code>earnings_json.lines</code>. Save the payslip from the <strong>Payslips</strong> tab after updating lines.
+            Pick a pay run and employee, then add reimbursement, adjustment, or arrears rows (or other supplemental lines). They are stored under{' '}
+            <code>earnings_json.lines</code> and appear on the payslip after you save from the <strong>Payslips</strong> tab.
           </p>
           <div className={styles.inline} style={{ marginBottom: '0.75rem' }}>
             <select
@@ -3767,10 +4154,12 @@ export function PayrollPage() {
 
           <div style={{ marginTop: '1.25rem' }}>
             <p className={styles.muted} style={{ fontSize: '0.875rem', marginTop: 0 }}>
-              Optional rows stored under <code>earnings_json.lines</code>. The sum of line amounts cannot exceed payslip <strong>gross</strong>. Mark reimbursements
-              as non-taxable where appropriate (SimCash TDS is simplified; this flag is for future statutory work).
+              Optional rows stored under <code>earnings_json.lines</code>. <strong>Reimbursement</strong>, <strong>adjustment</strong>, and{' '}
+              <strong>arrears</strong> lines are saved on the payslip and shown in SimCash as supplemental extras; they do <strong>not</strong> count against the
+              payslip gross cap. <strong>Other</strong> supplemental lines still count toward gross. Mark reimbursements non-taxable where appropriate (SimCash TDS
+              is simplified; this flag is for future statutory work).
             </p>
-            {canEditPayslip ? (
+            {canConfigure ? (
               <div className={styles.inline} style={{ marginBottom: '0.5rem' }}>
                 <button
                   type="button"
@@ -3793,14 +4182,14 @@ export function PayrollPage() {
                       <th>Code</th>
                       <th>Amount (₹S)</th>
                       <th>Taxable</th>
-                      {canEditPayslip ? <th /> : null}
+                      {canConfigure ? <th /> : null}
                     </tr>
                   </thead>
                   <tbody>
                     {supplementalLines.map((row) => (
                       <tr key={row.id}>
                         <td>
-                          {canEditPayslip ? (
+                          {canConfigure ? (
                             <select
                               className={styles.input}
                               value={row.lineType}
@@ -3821,7 +4210,7 @@ export function PayrollPage() {
                           )}
                         </td>
                         <td>
-                          {canEditPayslip ? (
+                          {canConfigure ? (
                             <input
                               className={styles.input}
                               value={row.code}
@@ -3835,7 +4224,7 @@ export function PayrollPage() {
                           )}
                         </td>
                         <td>
-                          {canEditPayslip ? (
+                          {canConfigure ? (
                             <input
                               className={styles.input}
                               value={row.amount}
@@ -3848,7 +4237,7 @@ export function PayrollPage() {
                           )}
                         </td>
                         <td>
-                          {canEditPayslip ? (
+                          {canConfigure ? (
                             <label className={styles.hint}>
                               <input
                                 type="checkbox"
@@ -3864,7 +4253,7 @@ export function PayrollPage() {
                             'No'
                           )}
                         </td>
-                        {canEditPayslip ? (
+                        {canConfigure ? (
                           <td>
                             <button
                               type="button"
@@ -3884,35 +4273,51 @@ export function PayrollPage() {
             )}
           </div>
 
-          {selectedPayslip && payslipLedger.length > 0 ? (
+          {activePayslipId ? (
             <div style={{ marginTop: '1.25rem' }}>
-              <h4 className={styles.h3}>Payroll ledger (this payslip)</h4>
+              <h4 className={styles.h3}>Supplemental extras log (this employee)</h4>
               <p className={styles.muted} style={{ fontSize: '0.875rem', marginTop: 0 }}>
-                Posted buckets for analytics — salary remainder after supplemental lines plus one row per supplemental entry.
+                Logged reimbursement, adjustment, and arrears lines saved for this pay run and employee (after payslip save).
               </p>
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
                     <tr>
+                      <th>Logged at</th>
                       <th>Kind</th>
-                      <th>Direction</th>
+                      <th>Code</th>
                       <th>Amount</th>
-                      <th>Meta</th>
+                      <th>Taxable</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {payslipLedger.map((le) => (
-                      <tr key={le.id}>
-                        <td>{le.entry_kind}</td>
-                        <td>{le.direction}</td>
-                        <td>
-                          {le.currency_code} {le.amount}
-                        </td>
-                        <td className={styles.muted} style={{ fontSize: '0.8125rem' }}>
-                          {le.metadata_json ? JSON.stringify(le.metadata_json) : '—'}
+                    {supplementalExtraLedgerRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className={styles.muted}>
+                          No reimbursement, adjustment, or arrears entries yet.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      supplementalExtraLedgerRows.map((le) => {
+                        const meta =
+                          le.metadata_json && typeof le.metadata_json === 'object'
+                            ? (le.metadata_json as Record<string, unknown>)
+                            : null
+                        const code = typeof meta?.code === 'string' && meta.code.trim() ? meta.code.trim() : '—'
+                        const taxable = meta?.taxable === true ? 'Yes' : meta?.taxable === false ? 'No' : '—'
+                        return (
+                          <tr key={le.id}>
+                            <td>{new Date(le.created_at).toLocaleString('en-IN')}</td>
+                            <td>{ledgerEntryKindLabel(le.entry_kind)}</td>
+                            <td>{code}</td>
+                            <td>
+                              {le.currency_code} {le.amount}
+                            </td>
+                            <td>{taxable}</td>
+                          </tr>
+                        )
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -3921,7 +4326,16 @@ export function PayrollPage() {
 
           {canEditPayslip ? (
             <div className={styles.inline} style={{ marginTop: '1rem' }}>
-              <button type="button" className={styles.btnSm} onClick={() => setTab('payslips')}>
+              <button
+                type="button"
+                className={styles.btnSm}
+                onClick={() =>
+                  gotoPayrollTab('payslips', {
+                    pay_run_id: payRunId,
+                    employee_id: payrollEmpId,
+                  })
+                }
+              >
                 Go to Payslips tab to save
               </button>
             </div>
@@ -3932,7 +4346,7 @@ export function PayrollPage() {
       {tab === 'payslips' ? (
         <section className={styles.card}>
           <h3 className={styles.h3}>Payslips</h3>
-          {canConfigure ? (
+          {canPayslipWorksheet ? (
             <form onSubmit={onSavePayslip}>
               <p className={styles.flowHint} style={{ marginBottom: '0.75rem' }}>
                 {payslipViewOnly ? (
@@ -4067,11 +4481,7 @@ export function PayrollPage() {
                 engineLoading={engineLoading}
                 onToggleEngineColumn={persistShowEngine}
                 readOnly={payslipViewOnly}
-                extraEarningLines={
-                  reimbursementTotalDisplay > 0
-                    ? [{ label: 'Reimbursements (supplemental)', amount: reimbursementTotalDisplay }]
-                    : []
-                }
+                extraEarningLines={supplementalExtraSimCashLines}
                 extraDeductionLines={
                   benefitsPremiumDisplay > 0
                     ? [{ label: 'Benefits premium (active enrollments)', amount: benefitsPremiumDisplay }]
@@ -4079,10 +4489,56 @@ export function PayrollPage() {
                 }
               />
 
-              {canConfigure ? (
+              {isPayrollAdmin ? (
                 <p className={styles.muted} style={{ marginTop: '1rem' }}>
                   Reimbursement/supplemental lines moved to the <strong>Reimbursements</strong> tab.
                 </p>
+              ) : null}
+
+              {activePayslipId ? (
+                <div style={{ marginTop: '1rem' }}>
+                  <h4 className={styles.h3}>Supplemental extras log (saved payslip)</h4>
+                  {supplementalExtraLedgerRows.length === 0 ? (
+                    <p className={styles.muted}>
+                      No reimbursement, adjustment, or arrears entries logged yet for this payslip.
+                    </p>
+                  ) : (
+                    <div className={styles.tableWrap}>
+                      <table className={styles.table}>
+                        <thead>
+                          <tr>
+                            <th>Logged at</th>
+                            <th>Kind</th>
+                            <th>Code</th>
+                            <th>Amount</th>
+                            <th>Taxable</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {supplementalExtraLedgerRows.map((le) => {
+                            const meta =
+                              le.metadata_json && typeof le.metadata_json === 'object'
+                                ? (le.metadata_json as Record<string, unknown>)
+                                : null
+                            const code = typeof meta?.code === 'string' && meta.code.trim() ? meta.code.trim() : '—'
+                            const taxable = meta?.taxable === true ? 'Yes' : meta?.taxable === false ? 'No' : '—'
+                            return (
+                              <tr key={le.id}>
+                                <td>{new Date(le.created_at).toLocaleString('en-IN')}</td>
+                                <td>{ledgerEntryKindLabel(le.entry_kind)}</td>
+                                <td>{code}</td>
+                                <td>
+                                  {le.currency_code} {le.amount}
+                                </td>
+                                <td>{taxable}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               ) : null}
 
               {canEditPayslip ? (
@@ -4104,7 +4560,7 @@ export function PayrollPage() {
                       Dev: request expected values (needs API debug — SIMCASH_DEBUG=1 or DEBUG=1 + header)
                     </label>
                   ) : null}
-                  <button className={styles.btnSm} type="submit" disabled={pending || !payrollEmpId || !payRunId}>
+                  <button className={styles.btnSm} type="submit" disabled={pending}>
                     Save payslip
                   </button>
                 </div>
@@ -4124,21 +4580,140 @@ export function PayrollPage() {
                 </details>
               ) : null}
             </form>
-          ) : null}
-
-          <h4 className={styles.h3} style={{ marginTop: '1.25rem' }}>
-            Your payslips
-          </h4>
-          {loading ? (
-            <p className={styles.muted}>Loading…</p>
-          ) : payslips.length === 0 ? (
-            <p className={styles.muted}>No payslips yet.</p>
           ) : (
-            payslips.map((p) => (
-              <p key={p.id} className={styles.muted}>
-                Pay run {p.pay_run_id.slice(0, 8)}… — gross ₹S {p.gross} · net ₹S {p.net}
+            <>
+              <p className={styles.flowHint} style={{ marginBottom: '0.75rem' }}>
+                Your <strong>monthly</strong> earnings, deductions, and net pay (read-only). When a PDF has been uploaded for a month, you can download it.
               </p>
-            ))
+              {loading ? (
+                <p className={styles.muted}>Loading…</p>
+              ) : viewerPayslipsSorted.length === 0 ? (
+                <p className={styles.muted}>No payslips yet.</p>
+              ) : (
+                <>
+                  <div className={styles.inline} style={{ marginBottom: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <label className={styles.hint}>
+                      Payroll month
+                      <select
+                        className={styles.input}
+                        value={payslipViewerPayslipId}
+                        onChange={(e) => setPayslipViewerPayslipId(e.target.value)}
+                        aria-label="Payslip period"
+                      >
+                        {viewerPayslipsSorted.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {formatPayslipViewerPeriodLabel(p, payRunById.get(p.pay_run_id))}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  {selectedViewerPayslip
+                    ? (() => {
+                        const p = selectedViewerPayslip
+                        const e = (p.earnings_json ?? {}) as Record<string, unknown>
+                        const d = (p.deductions_json ?? {}) as Record<string, unknown>
+                        const lineRows: unknown[] = Array.isArray(e.lines) ? (e.lines as unknown[]) : []
+                        return (
+                          <div>
+                            <div className={styles.inline} style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              {p.pdf_url ? (
+                                <a
+                                  className={styles.btnSm}
+                                  href={p.pdf_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download
+                                >
+                                  Download payslip PDF
+                                </a>
+                              ) : (
+                                <span className={styles.muted}>No PDF is attached for this month yet.</span>
+                              )}
+                            </div>
+                            <h4 className={styles.h3}>Earnings</h4>
+                            <div className={styles.tableWrap}>
+                              <table className={styles.table}>
+                                <thead>
+                                  <tr>
+                                    <th>Component</th>
+                                    <th>Amount</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {EARNINGS_KEYS.map((k) => (
+                                    <tr key={k}>
+                                      <td>{FIELD_LABELS[k]}</td>
+                                      <td>{k === 'gross' ? jsonNumber(p.gross) : jsonNumber(e[k])}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            {lineRows.length > 0 ? (
+                              <>
+                                <h4 className={styles.h3} style={{ marginTop: '1rem' }}>
+                                  Supplemental &amp; other lines
+                                </h4>
+                                <div className={styles.tableWrap}>
+                                  <table className={styles.table}>
+                                    <thead>
+                                      <tr>
+                                        <th>Type</th>
+                                        <th>Code</th>
+                                        <th>Amount</th>
+                                        <th>Taxable</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {lineRows.map((row, i) => {
+                                        const o = row && typeof row === 'object' ? (row as Record<string, unknown>) : null
+                                        const t = o ? String(o.type ?? '—') : '—'
+                                        const c = o && typeof o.code === 'string' ? o.code : '—'
+                                        const a = o ? o.amount : null
+                                        const tax = o?.taxable === true ? 'Yes' : o?.taxable === false ? 'No' : '—'
+                                        return (
+                                          <tr key={i}>
+                                            <td>{t}</td>
+                                            <td>{c}</td>
+                                            <td>{jsonNumber(a)}</td>
+                                            <td>{tax}</td>
+                                          </tr>
+                                        )
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </>
+                            ) : null}
+                            <h4 className={styles.h3} style={{ marginTop: '1rem' }}>
+                              Deductions
+                            </h4>
+                            <div className={styles.tableWrap}>
+                              <table className={styles.table}>
+                                <thead>
+                                  <tr>
+                                    <th>Component</th>
+                                    <th>Amount</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {DEDUCTION_KEYS.map((k) => (
+                                    <tr key={k}>
+                                      <td>{FIELD_LABELS[k]}</td>
+                                      <td>{k === 'net' ? jsonNumber(p.net) : jsonNumber(d[k])}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )
+                      })()
+                    : null}
+                </>
+              )}
+            </>
           )}
         </section>
       ) : null}

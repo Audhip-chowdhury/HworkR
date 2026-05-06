@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../../auth/AuthContext'
 import { useNavigate, useParams } from 'react-router-dom'
 import { apiFetch } from '../../../api/client'
-import { createLifecycleEvent, getEmployee, listLifecycleEvents, updateEmployee, updateOnboardingChecklist, type Employee, type LifecycleEvent } from '../../../api/employeesApi'
+import {
+  createLifecycleEvent,
+  getEmployee,
+  listLifecycleEvents,
+  updateEmployee,
+  updateOnboardingChecklist,
+  type Employee,
+  type LifecycleEvent,
+} from '../../../api/employeesApi'
 import {
   listDepartments,
   listPositions,
@@ -17,6 +25,7 @@ type JobRow = { id: string; title: string }
 
 type Tab = 'profile' | 'job' | 'lifecycle' | 'onboarding'
 
+/** Standalone route: `/company/:companyId/employees/:employeeId` (e.g. deep links). */
 export function EmployeeDetailPage() {
   const { companyId = '', employeeId = '' } = useParams()
   const { myCompanies } = useAuth()
@@ -114,7 +123,11 @@ export function EmployeeDetailPage() {
   }, [gradeBands])
 
   const currentGradeNum = jobGradeInput ? Number(jobGradeInput) : null
-  const gradeHasNoBand = currentGradeNum != null && Number.isFinite(currentGradeNum) && gradeBands.length > 0 && !gradeBands.some((b) => b.org_position_grade_min === currentGradeNum)
+  const gradeHasNoBand =
+    currentGradeNum != null &&
+    Number.isFinite(currentGradeNum) &&
+    gradeBands.length > 0 &&
+    !gradeBands.some((b) => b.org_position_grade_min === currentGradeNum)
   const profilePositionLabel = useMemo(() => {
     if (!employee?.position_id) return 'Unassigned'
     return positions.find((p) => p.id === employee.position_id)?.name ?? '—'
@@ -201,10 +214,34 @@ export function EmployeeDetailPage() {
     <div className={styles.org}>
       {error ? <p className={styles.error}>{error}</p> : null}
       <div className={styles.tabBar}>
-        <button className={`${styles.tabBtn} ${tab === 'profile' ? styles.tabBtnActive : ''}`} onClick={() => setTab('profile')}>Profile</button>
-        <button className={`${styles.tabBtn} ${tab === 'job' ? styles.tabBtnActive : ''}`} onClick={() => setTab('job')}>Job info</button>
-        <button className={`${styles.tabBtn} ${tab === 'lifecycle' ? styles.tabBtnActive : ''}`} onClick={() => setTab('lifecycle')}>Lifecycle</button>
-        <button className={`${styles.tabBtn} ${tab === 'onboarding' ? styles.tabBtnActive : ''}`} onClick={() => setTab('onboarding')}>Onboarding</button>
+        <button
+          type="button"
+          className={`${styles.tabBtn} ${tab === 'profile' ? styles.tabBtnActive : ''}`}
+          onClick={() => setTab('profile')}
+        >
+          Profile
+        </button>
+        <button
+          type="button"
+          className={`${styles.tabBtn} ${tab === 'job' ? styles.tabBtnActive : ''}`}
+          onClick={() => setTab('job')}
+        >
+          Job info
+        </button>
+        <button
+          type="button"
+          className={`${styles.tabBtn} ${tab === 'lifecycle' ? styles.tabBtnActive : ''}`}
+          onClick={() => setTab('lifecycle')}
+        >
+          Lifecycle
+        </button>
+        <button
+          type="button"
+          className={`${styles.tabBtn} ${tab === 'onboarding' ? styles.tabBtnActive : ''}`}
+          onClick={() => setTab('onboarding')}
+        >
+          Onboarding
+        </button>
       </div>
 
       <section className={styles.card}>
@@ -212,7 +249,7 @@ export function EmployeeDetailPage() {
           <>
             <h3 className={styles.h3}>Employee profile</h3>
             <p>Employee code: {employee.employee_code}</p>
-            <p>Department: {employee.department_id ? deptById.get(employee.department_id) ?? '—' : 'Unassigned'}</p>
+            <p>Department: {employee.department_id ? (deptById.get(employee.department_id) ?? '—') : 'Unassigned'}</p>
             <p>Position (designation): {profilePositionLabel}</p>
             <p>Grade (org position): {profileGradeLabel}</p>
             <p>Job (catalog): {employee.job_id ? jobTitleById.get(employee.job_id) ?? '—' : 'Unassigned'}</p>
@@ -262,11 +299,30 @@ export function EmployeeDetailPage() {
               <label className={styles.labelBlock}>
                 Grade (org position)
                 {gradeBands.length === 0 && canEdit ? (
-                  <span style={{ display: 'block', marginBottom: '0.25rem', padding: '0.35rem 0.6rem', background: '#fff8e1', border: '1px solid #f59e0b', borderRadius: 5, fontSize: '0.8rem', color: '#92400e' }}>
-                    ⚠ No grades configured.{' '}
+                  <span
+                    style={{
+                      display: 'block',
+                      marginBottom: '0.25rem',
+                      padding: '0.35rem 0.6rem',
+                      background: '#fff8e1',
+                      border: '1px solid #f59e0b',
+                      borderRadius: 5,
+                      fontSize: '0.8rem',
+                      color: '#92400e',
+                    }}
+                  >
+                    No grades configured.{' '}
                     <button
                       type="button"
-                      style={{ background: 'none', border: 'none', padding: 0, color: '#2563eb', textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit' }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        color: '#2563eb',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        fontSize: 'inherit',
+                      }}
                       onClick={() => navigate(`/company/${companyId}/payroll?tab=grades`)}
                     >
                       Create grades in Grade Structure
@@ -275,11 +331,30 @@ export function EmployeeDetailPage() {
                   </span>
                 ) : null}
                 {gradeHasNoBand ? (
-                  <span style={{ display: 'block', marginBottom: '0.25rem', padding: '0.35rem 0.6rem', background: '#fff8e1', border: '1px solid #f59e0b', borderRadius: 5, fontSize: '0.8rem', color: '#92400e' }}>
-                    ⚠ Grade {currentGradeNum} has no configured band.{' '}
+                  <span
+                    style={{
+                      display: 'block',
+                      marginBottom: '0.25rem',
+                      padding: '0.35rem 0.6rem',
+                      background: '#fff8e1',
+                      border: '1px solid #f59e0b',
+                      borderRadius: 5,
+                      fontSize: '0.8rem',
+                      color: '#92400e',
+                    }}
+                  >
+                    Grade {currentGradeNum} has no configured band.{' '}
                     <button
                       type="button"
-                      style={{ background: 'none', border: 'none', padding: 0, color: '#2563eb', textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit' }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        color: '#2563eb',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        fontSize: 'inherit',
+                      }}
                       onClick={() => navigate(`/company/${companyId}/payroll?tab=grades`)}
                     >
                       Configure it in Grade Structure.
@@ -293,7 +368,11 @@ export function EmployeeDetailPage() {
                   disabled={!canEdit || !jobPositionId || gradeBands.length === 0}
                 >
                   <option value="">
-                    {gradeBands.length === 0 ? 'No grades — configure in Grade Structure' : jobPositionId ? '— Select grade —' : 'Select position first'}
+                    {gradeBands.length === 0
+                      ? 'No grades — configure in Grade Structure'
+                      : jobPositionId
+                        ? '— Select grade —'
+                        : 'Select position first'}
                   </option>
                   {gradeOptions.map((g) => (
                     <option key={g} value={String(g)}>
@@ -333,7 +412,7 @@ export function EmployeeDetailPage() {
               <input type="date" className={styles.input} value={hireDate} onChange={(e) => setHireDate(e.target.value)} disabled={!canEdit} />
             </label>
             {canEdit ? (
-              <button className={styles.btnSm} disabled={pending} onClick={() => void saveJobInfo()}>
+              <button type="button" className={styles.btnSm} disabled={pending} onClick={() => void saveJobInfo()}>
                 {pending ? 'Saving…' : 'Save job info'}
               </button>
             ) : null}
@@ -347,15 +426,37 @@ export function EmployeeDetailPage() {
                 <input className={styles.input} placeholder="Event type" value={eventType} onChange={(e) => setEventType(e.target.value)} />
                 <input className={styles.input} type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
                 <input className={styles.input} placeholder="Notes" value={eventNotes} onChange={(e) => setEventNotes(e.target.value)} />
-                <button className={styles.btnSm} disabled={pending} onClick={() => void addLifecycleEvent()}>Add event</button>
+                <button type="button" className={styles.btnSm} disabled={pending} onClick={() => void addLifecycleEvent()}>
+                  Add event
+                </button>
               </div>
             ) : null}
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th>Type</th><th>Date</th><th>Status</th><th>Notes</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {events.length === 0 ? <tr><td className={styles.muted} colSpan={4}>No lifecycle events yet.</td></tr> : null}
-                  {events.map((e) => <tr key={e.id}><td>{e.event_type}</td><td>{e.effective_date ?? '—'}</td><td>{e.status}</td><td>{e.notes ?? '—'}</td></tr>)}
+                  {events.length === 0 ? (
+                    <tr>
+                      <td className={styles.muted} colSpan={4}>
+                        No lifecycle events yet.
+                      </td>
+                    </tr>
+                  ) : null}
+                  {events.map((e) => (
+                    <tr key={e.id}>
+                      <td>{e.event_type}</td>
+                      <td>{e.effective_date ?? '—'}</td>
+                      <td>{e.status}</td>
+                      <td>{e.notes ?? '—'}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -364,8 +465,18 @@ export function EmployeeDetailPage() {
         {tab === 'onboarding' ? (
           <>
             <h3 className={styles.h3}>Onboarding checklist JSON</h3>
-            <textarea className={styles.input} style={{ minHeight: 180 }} value={checklistText} onChange={(e) => setChecklistText(e.target.value)} disabled={!canEdit} />
-            {canEdit ? <button className={styles.btnSm} disabled={pending} onClick={() => void saveChecklist()}>Save checklist</button> : null}
+            <textarea
+              className={styles.input}
+              style={{ minHeight: 180 }}
+              value={checklistText}
+              onChange={(e) => setChecklistText(e.target.value)}
+              disabled={!canEdit}
+            />
+            {canEdit ? (
+              <button type="button" className={styles.btnSm} disabled={pending} onClick={() => void saveChecklist()}>
+                Save checklist
+              </button>
+            ) : null}
           </>
         ) : null}
       </section>

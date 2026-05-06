@@ -75,7 +75,9 @@ from app.schemas.compensation_engagement import (
     SurveyUpdate,
 )
 from app.services.audit import write_audit
+from app.services.activity_tracking import log_tracked_hr_action
 from app.services.payroll_supplemental import (
+    has_only_extra_lines,
     list_ledger_entries_for_payslip,
     sync_ledger_entries_for_payslip,
     validate_payslip_supplemental_vs_gross,
@@ -106,12 +108,31 @@ _PAYROLL_OPS = frozenset({"company_admin", "compensation_analytics", "hr_ops"})
 _PAYROLL_COMPANY_ADMIN = frozenset({"company_admin", "compensation_analytics"})
 # Release salary after payslip — HR ops only.
 _PAYROLL_HR_RELEASE = frozenset({"hr_ops"})
-# Create/update payslip worksheet — all configure roles (compensation_analytics = admin in payroll).
-_PAYROLL_PAYSLIP_EDIT = frozenset({"company_admin", "compensation_analytics", "hr_ops"})
+# Create/update saved payslips (SimCash worksheet) — compensation specialist only; others are read-only in the app.
+_PAYROLL_PAYSLIP_WRITE = frozenset({"compensation_analytics"})
 
 PAYROLL_STATUS_TO_BE_PROCESSED = "to_be_processed"
 PAYROLL_STATUS_PAYSLIP_GENERATED = "payslip_generated"
 PAYROLL_STATUS_SALARY_RELEASED = "salary_released"
+PAYSLIP_WORKFLOW_STATE_EXTRAS_PENDING = "extras_pending_review"
+
+
+def _assert_hr_ops_own_employee_only(
+    db: Session,
+    company_id: str,
+    user: User,
+    membership: CompanyMembership,
+    target_employee_id: str,
+) -> None:
+    """HR Operations may only view or edit payslips / payroll lines for their own employee record (if they have one)."""
+    if membership.role != "hr_ops":
+        return
+    me = get_employee_for_user(db, company_id, user.id)
+    if me is None or me.id != target_employee_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="HR Operations can only access payslips and payroll lines for their own employee record",
+        )
 
 
 def _department_in_company(db: Session, company_id: str, department_id: str) -> bool:
@@ -454,7 +475,7 @@ def create_grade_band(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> CompensationGradeBand:
-    user, _ = ctx
+    user, membership = ctx
     code = body.band_code.strip()
     if not code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="band_code is required")
@@ -493,6 +514,22 @@ def create_grade_band(
             "effective_to": row.effective_to,
             "org_position_grade_min": row.org_position_grade_min,
             "org_position_grade_max": row.org_position_grade_max,
+        },
+    )
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="compensation",
+        action_type="grade_band_create",
+        action_detail=row.band_code,
+        entity_type="grade_band",
+        entity_id=row.id,
+        quality_factors={
+            "completeness": 95.0,
+            "accuracy": 92.0,
+            "process_adherence": 90.0,
         },
     )
     try:
@@ -603,7 +640,7 @@ def create_salary_structure(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> SalaryStructure:
-    user, _ = ctx
+    user, membership = ctx
     if get_employee_by_id(db, company_id, body.employee_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
     row = SalaryStructure(
@@ -627,6 +664,22 @@ def create_salary_structure(
             "ctc_annual": snap.get("ctc_annual"),
             "bonus_pct_of_ctc": snap.get("bonus_pct_of_ctc"),
             "effective_from": body.effective_from,
+        },
+    )
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="compensation",
+        action_type="salary_structure_create",
+        action_detail=body.employee_id,
+        entity_type="salary_structure",
+        entity_id=row.id,
+        quality_factors={
+            "completeness": 96.0 if snap.get("ctc_annual") is not None else 82.0,
+            "accuracy": 90.0,
+            "process_adherence": 90.0,
         },
     )
     db.commit()
@@ -848,7 +901,7 @@ def list_pay_runs(
 @router.get("/payroll/pay-runs/period-overview", response_model=list[PayRunDepartmentOverviewOut])
 def pay_run_period_overview(
     company_id: str,
-    _: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
     month: int = Query(..., ge=1, le=12),
     year: int = Query(..., ge=2000, le=2100),
@@ -859,6 +912,13 @@ def pay_run_period_overview(
     ),
 ) -> list[PayRunDepartmentOverviewOut]:
     """Departments for a calendar month with per-employee payroll status for the matching pay run."""
+    user, membership = ctx
+    hr_ops_self: Employee | None = None
+    if membership.role == "hr_ops":
+        hr_ops_self = get_employee_for_user(db, company_id, user.id)
+        if hr_ops_self is None:
+            return []
+
     valid_sf = {
         PAYROLL_STATUS_TO_BE_PROCESSED,
         PAYROLL_STATUS_PAYSLIP_GENERATED,
@@ -891,6 +951,10 @@ def pay_run_period_overview(
                 select(PayRunEmployeeLine).where(PayRunEmployeeLine.pay_run_id == pr.id)
             ).scalars().all()
         )
+        if membership.role == "hr_ops" and hr_ops_self is not None:
+            lines_all = [ln for ln in lines_all if ln.employee_id == hr_ops_self.id]
+        if not lines_all and membership.role == "hr_ops":
+            continue
         all_released = len(lines_all) > 0 and all(
             ln.status == PAYROLL_STATUS_SALARY_RELEASED for ln in lines_all
         )
@@ -912,6 +976,9 @@ def pay_run_period_overview(
                     payroll_status=line.status,
                 )
             )
+
+        if not employees_out:
+            continue
 
         out.append(
             PayRunDepartmentOverviewOut(
@@ -936,7 +1003,8 @@ def release_employee_salary(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_HR_RELEASE))],
     db: Annotated[Session, Depends(get_db)],
 ) -> PayRunEmployeeLineOut:
-    user, _ = ctx
+    user, membership = ctx
+    _assert_hr_ops_own_employee_only(db, company_id, user, membership, employee_id)
     pr = db.execute(
         select(PayRun).where(PayRun.id == pay_run_id, PayRun.company_id == company_id)
     ).scalar_one_or_none()
@@ -1010,10 +1078,11 @@ def update_pay_run(
 def create_payslip(
     company_id: str,
     body: PayslipCreate,
-    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_PAYSLIP_EDIT))],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_PAYSLIP_WRITE))],
     db: Annotated[Session, Depends(get_db)],
 ) -> Payslip:
-    user, _ = ctx
+    user, membership = ctx
+    _assert_hr_ops_own_employee_only(db, company_id, user, membership, body.employee_id)
     pr = db.execute(select(PayRun).where(PayRun.id == body.pay_run_id, PayRun.company_id == company_id)).scalar_one_or_none()
     if pr is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pay run not found")
@@ -1030,6 +1099,18 @@ def create_payslip(
         gross=body.gross,
         earnings_json=body.earnings_json if isinstance(body.earnings_json, dict) else None,
     )
+    extras_only_pending = (
+        has_only_extra_lines(body.earnings_json if isinstance(body.earnings_json, dict) else None)
+        and float(body.gross or 0) <= 1e-6
+        and float(body.net or 0) <= 1e-6
+        and float(payslip_deductions_total(body.deductions_json)) <= 1e-6
+    )
+    earnings_payload = dict(body.earnings_json or {})
+    if extras_only_pending:
+        earnings_payload["_workflow_state"] = PAYSLIP_WORKFLOW_STATE_EXTRAS_PENDING
+    else:
+        if isinstance(earnings_payload.get("_workflow_state"), str):
+            earnings_payload.pop("_workflow_state", None)
     existing = db.execute(
         select(Payslip).where(
             Payslip.pay_run_id == body.pay_run_id,
@@ -1039,7 +1120,7 @@ def create_payslip(
     ).scalar_one_or_none()
     if existing:
         existing.gross = body.gross
-        existing.earnings_json = body.earnings_json
+        existing.earnings_json = earnings_payload
         existing.deductions_json = body.deductions_json
         existing.net = body.net
         existing.pdf_url = body.pdf_url
@@ -1052,7 +1133,7 @@ def create_payslip(
             company_id=company_id,
             employee_id=body.employee_id,
             gross=body.gross,
-            earnings_json=body.earnings_json,
+            earnings_json=earnings_payload,
             deductions_json=body.deductions_json,
             net=body.net,
             pdf_url=body.pdf_url,
@@ -1068,7 +1149,7 @@ def create_payslip(
             PayRunEmployeeLine.company_id == company_id,
         )
     ).scalar_one_or_none()
-    if line is None or line.status != PAYROLL_STATUS_SALARY_RELEASED:
+    if (not extras_only_pending) and (line is None or line.status != PAYROLL_STATUS_SALARY_RELEASED):
         _upsert_payroll_line_status(
             db, company_id, body.pay_run_id, body.employee_id, PAYROLL_STATUS_PAYSLIP_GENERATED
         )
@@ -1090,14 +1171,16 @@ def create_payslip(
 def list_payslip_ledger_entries(
     company_id: str,
     payslip_id: str,
-    _: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> list[PayrollLedgerEntry]:
+    user, membership = ctx
     ps = db.execute(
         select(Payslip).where(Payslip.id == payslip_id, Payslip.company_id == company_id)
     ).scalar_one_or_none()
     if ps is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payslip not found")
+    _assert_hr_ops_own_employee_only(db, company_id, user, membership, ps.employee_id)
     return list_ledger_entries_for_payslip(db, company_id, payslip_id)
 
 
@@ -1112,7 +1195,8 @@ def get_payroll_engine_expected(
     other_deductions: float = Query(default=0.0, ge=0),
 ) -> PayrollEngineExpectedOut:
     """Return engine-computed monthly SimCash values for UI watermark (training / verification)."""
-    _, _ = ctx
+    user, membership = ctx
+    _assert_hr_ops_own_employee_only(db, company_id, user, membership, employee_id)
     if get_employee_by_id(db, company_id, employee_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
     st = db.execute(
@@ -1154,9 +1238,10 @@ def validate_payroll_calculation(
     db: Annotated[Session, Depends(get_db)],
     x_simcash_debug: Annotated[str | None, Header()] = None,
 ) -> PayrollValidateCalculationOut:
-    _, _ = ctx
+    user, membership = ctx
     if get_employee_by_id(db, company_id, body.employee_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    _assert_hr_ops_own_employee_only(db, company_id, user, membership, body.employee_id)
     st = db.execute(
         select(SalaryStructure)
         .where(
@@ -1253,7 +1338,12 @@ def get_payroll_reconciliation_expected(
     pay_run_id: str = Query(..., min_length=1),
 ) -> PayrollReconciliationExpectedOut:
     """Return summed payslip totals for reconciliation practice (engine column)."""
-    _, _ = ctx
+    _, membership = ctx
+    if membership.role == "hr_ops":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Reconciliation is not available for the HR Operations role",
+        )
     return _reconciliation_expected_out_for_pay_run(db, company_id, pay_run_id)
 
 
@@ -1265,7 +1355,12 @@ def validate_payroll_reconciliation(
     db: Annotated[Session, Depends(get_db)],
 ) -> PayrollValidateCalculationOut:
     """Compare learner-submitted roll-up totals to saved payslips (same tolerance as SimCash)."""
-    _, _ = ctx
+    _, membership = ctx
+    if membership.role == "hr_ops":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Reconciliation is not available for the HR Operations role",
+        )
     out = _reconciliation_expected_out_for_pay_run(db, company_id, body.pay_run_id)
     if not out.eligible or out.headcount is None:
         raise HTTPException(
@@ -1294,16 +1389,61 @@ def list_payslips(
 ) -> list[Payslip]:
     user, membership = ctx
     q = select(Payslip).where(Payslip.company_id == company_id)
-    if membership.role == "employee":
+    scoped_employee_id_for_extras: str | None = None
+    if membership.role == "compensation_analytics":
+        if employee_id:
+            q = q.where(Payslip.employee_id == employee_id)
+    elif membership.role == "employee":
         emp = get_employee_for_user(db, company_id, user.id)
         if emp is None:
             return []
+        if employee_id and employee_id != emp.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own payslips",
+            )
         q = q.where(Payslip.employee_id == emp.id)
-    elif employee_id:
-        q = q.where(Payslip.employee_id == employee_id)
+        scoped_employee_id_for_extras = emp.id
+    elif membership.role == "hr_ops":
+        emp = get_employee_for_user(db, company_id, user.id)
+        if emp is None:
+            return []
+        if employee_id and employee_id != emp.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="HR Operations can only view payslips for their own employee record",
+            )
+        q = q.where(Payslip.employee_id == emp.id)
+        scoped_employee_id_for_extras = emp.id
+    else:
+        emp = get_employee_for_user(db, company_id, user.id)
+        if emp is None:
+            return []
+        if employee_id and employee_id != emp.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own payslips",
+            )
+        q = q.where(Payslip.employee_id == emp.id)
+        scoped_employee_id_for_extras = emp.id
     if pay_run_id:
         q = q.where(Payslip.pay_run_id == pay_run_id)
-    return list(db.execute(q.order_by(Payslip.created_at.desc())).scalars().all())
+    rows = list(db.execute(q.order_by(Payslip.created_at.desc())).scalars().all())
+    # Keep extras-pending hidden from broad "saved payslips" views, but expose them
+    # when an exact pay_run + employee context is selected so lines can be edited/merged.
+    include_extras_pending_for_exact_context = bool(
+        pay_run_id and (bool(employee_id) or bool(scoped_employee_id_for_extras)),
+    )
+    if include_extras_pending_for_exact_context:
+        return rows
+    return [
+        p
+        for p in rows
+        if not (
+            isinstance(p.earnings_json, dict)
+            and p.earnings_json.get("_workflow_state") == PAYSLIP_WORKFLOW_STATE_EXTRAS_PENDING
+        )
+    ]
 
 
 @router.post("/benefits/plans", response_model=BenefitsPlanOut, status_code=status.HTTP_201_CREATED)
@@ -1313,7 +1453,7 @@ def create_benefits_plan(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_COMP))],
     db: Annotated[Session, Depends(get_db)],
 ) -> BenefitsPlan:
-    user, _ = ctx
+    user, membership = ctx
     details = dict(body.details_json or {})
     details["mandatory"] = body.mandatory
     row = BenefitsPlan(
@@ -1326,6 +1466,22 @@ def create_benefits_plan(
     )
     db.add(row)
     write_audit(db, company_id=company_id, user_id=user.id, entity_type="benefits_plan", entity_id=row.id, action="create", changes_json={})
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="compensation",
+        action_type="benefits_plan_create",
+        action_detail=row.type,
+        entity_type="benefits_plan",
+        entity_id=row.id,
+        quality_factors={
+            "completeness": 95.0 if row.details_json else 84.0,
+            "accuracy": 90.0,
+            "process_adherence": 90.0,
+        },
+    )
     db.commit()
     db.refresh(row)
     return row

@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../../auth/AuthContext'
 import {
@@ -196,17 +196,6 @@ export function BenefitsPage() {
   const mainTab: MainTab =
     tabParam && validTabForUser(tabParam) ? tabParam : initialTab
 
-  const setMainTab = useCallback(
-    (t: MainTab) => {
-      setSearchParams((prev) => {
-        const n = new URLSearchParams(prev)
-        n.set('tab', t)
-        return n
-      })
-    },
-    [setSearchParams],
-  )
-
   useEffect(() => {
     if (!tabParam || !validTabForUser(tabParam)) {
       setSearchParams((prev) => {
@@ -243,6 +232,15 @@ export function BenefitsPage() {
 
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState(planForm)
+  const editPlanSectionRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!editingPlanId) return
+    const id = window.requestAnimationFrame(() => {
+      editPlanSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [editingPlanId])
 
   /* Enrollments — enroll flow */
   const [deptFilter, setDeptFilter] = useState<string>('')
@@ -618,6 +616,107 @@ export function BenefitsPage() {
 
           <section className={styles.card}>
             <h3 className={styles.h3}>All plans</h3>
+            {editingPlanId ? (
+              <div ref={editPlanSectionRef} style={{ marginBottom: '1rem' }}>
+                <p className={styles.flowHint} style={{ fontWeight: 600, marginBottom: '0.75rem' }}>
+                  Edit plan
+                </p>
+                <form onSubmit={saveEditPlan} className={styles.positionForm} style={{ maxWidth: 560 }}>
+                  <label className={styles.hint}>
+                    Plan name *
+                    <input
+                      className={styles.input}
+                      value={editForm.name}
+                      onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label className={styles.hint}>
+                    Type
+                    <input
+                      className={styles.input}
+                      value={editForm.type}
+                      onChange={(e) => setEditForm((p) => ({ ...p, type: e.target.value }))}
+                    />
+                  </label>
+                  <label className={styles.hint}>
+                    Monthly premium (SimCash)
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={editForm.monthlyPremium}
+                      onChange={(e) => setEditForm((p) => ({ ...p, monthlyPremium: e.target.value }))}
+                    />
+                  </label>
+                  <label className={styles.hint}>
+                    Coverage by employees %
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={editForm.coveragePct}
+                      onChange={(e) => setEditForm((p) => ({ ...p, coveragePct: e.target.value }))}
+                    />
+                  </label>
+                  <label className={styles.radio} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={editForm.mandatory}
+                      onChange={(e) => setEditForm((p) => ({ ...p, mandatory: e.target.checked }))}
+                    />
+                    Mandatory enrollment
+                  </label>
+                  <label className={styles.hint}>
+                    Eligibility
+                    <input
+                      className={styles.input}
+                      value={editForm.eligibility}
+                      onChange={(e) => setEditForm((p) => ({ ...p, eligibility: e.target.value }))}
+                    />
+                  </label>
+                  <div className={styles.inline} style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <label className={styles.hint}>
+                      Enrollment window start
+                      <input
+                        className={styles.input}
+                        type="date"
+                        value={editForm.enrollmentStart}
+                        onChange={(e) => setEditForm((p) => ({ ...p, enrollmentStart: e.target.value }))}
+                      />
+                    </label>
+                    <label className={styles.hint}>
+                      Enrollment window end
+                      <input
+                        className={styles.input}
+                        type="date"
+                        value={editForm.enrollmentEnd}
+                        onChange={(e) => setEditForm((p) => ({ ...p, enrollmentEnd: e.target.value }))}
+                      />
+                    </label>
+                  </div>
+                  <label className={styles.hint}>
+                    Description
+                    <textarea
+                      className={styles.input}
+                      style={{ minHeight: 88 }}
+                      value={editForm.description}
+                      onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
+                    />
+                  </label>
+                  <div className={styles.inline} style={{ gap: '0.5rem' }}>
+                    <button type="submit" className={styles.btnSm} disabled={pending}>
+                      {pending ? 'Saving…' : 'Save changes'}
+                    </button>
+                    <button type="button" className={styles.btnSm} onClick={() => setEditingPlanId(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : null}
             {plans.length === 0 ? (
               <p className={styles.muted}>No plans yet.</p>
             ) : (
@@ -670,106 +769,6 @@ export function BenefitsPage() {
               </div>
             )}
           </section>
-
-          {editingPlanId ? (
-            <section className={styles.card}>
-              <h3 className={styles.h3}>Edit plan</h3>
-              <form onSubmit={saveEditPlan} className={styles.positionForm} style={{ maxWidth: 560 }}>
-                <label className={styles.hint}>
-                  Plan name *
-                  <input
-                    className={styles.input}
-                    value={editForm.name}
-                    onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
-                    required
-                  />
-                </label>
-                <label className={styles.hint}>
-                  Type
-                  <input
-                    className={styles.input}
-                    value={editForm.type}
-                    onChange={(e) => setEditForm((p) => ({ ...p, type: e.target.value }))}
-                  />
-                </label>
-                <label className={styles.hint}>
-                  Monthly premium (SimCash)
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={editForm.monthlyPremium}
-                    onChange={(e) => setEditForm((p) => ({ ...p, monthlyPremium: e.target.value }))}
-                  />
-                </label>
-                <label className={styles.hint}>
-                  Coverage by employees %
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={editForm.coveragePct}
-                    onChange={(e) => setEditForm((p) => ({ ...p, coveragePct: e.target.value }))}
-                  />
-                </label>
-                <label className={styles.radio} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={editForm.mandatory}
-                    onChange={(e) => setEditForm((p) => ({ ...p, mandatory: e.target.checked }))}
-                  />
-                  Mandatory enrollment
-                </label>
-                <label className={styles.hint}>
-                  Eligibility
-                  <input
-                    className={styles.input}
-                    value={editForm.eligibility}
-                    onChange={(e) => setEditForm((p) => ({ ...p, eligibility: e.target.value }))}
-                  />
-                </label>
-                <div className={styles.inline} style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-                  <label className={styles.hint}>
-                    Enrollment window start
-                    <input
-                      className={styles.input}
-                      type="date"
-                      value={editForm.enrollmentStart}
-                      onChange={(e) => setEditForm((p) => ({ ...p, enrollmentStart: e.target.value }))}
-                    />
-                  </label>
-                  <label className={styles.hint}>
-                    Enrollment window end
-                    <input
-                      className={styles.input}
-                      type="date"
-                      value={editForm.enrollmentEnd}
-                      onChange={(e) => setEditForm((p) => ({ ...p, enrollmentEnd: e.target.value }))}
-                    />
-                  </label>
-                </div>
-                <label className={styles.hint}>
-                  Description
-                  <textarea
-                    className={styles.input}
-                    style={{ minHeight: 88 }}
-                    value={editForm.description}
-                    onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
-                  />
-                </label>
-                <div className={styles.inline} style={{ gap: '0.5rem' }}>
-                  <button type="submit" className={styles.btnSm} disabled={pending}>
-                    {pending ? 'Saving…' : 'Save changes'}
-                  </button>
-                  <button type="button" className={styles.btnSm} onClick={() => setEditingPlanId(null)}>
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </section>
-          ) : null}
         </>
       ) : null}
 

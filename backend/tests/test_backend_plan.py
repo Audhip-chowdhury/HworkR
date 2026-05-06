@@ -98,7 +98,9 @@ def test_requisition_workflow_approve():
             headers=_hdr(tok),
         )
         assert r.status_code == 201, r.text
-        rid = r.json()["id"]
+        body = r.json()
+        rid = body["id"]
+        assert body.get("req_code") and len(body["req_code"]) == 6
 
         r = client.patch(
             f"/api/v1/companies/{cid}/recruitment/requisitions/{rid}",
@@ -130,6 +132,55 @@ def test_requisition_workflow_approve():
         assert r.status_code == 200
         row = next(x for x in r.json() if x["id"] == rid)
         assert row["status"] == "approved"
+
+
+def test_public_apply_by_req_code_creates_user_and_application():
+    from app.main import app
+
+    with TestClient(app) as client:
+        tok, cid = _register_and_company(client)
+        r = client.post(
+            f"/api/v1/companies/{cid}/recruitment/requisitions",
+            json={"headcount": 1},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+        req_code = r.json()["req_code"]
+        rid = r.json()["id"]
+
+        r = client.post(
+            f"/api/v1/companies/{cid}/recruitment/postings",
+            json={"requisition_id": rid, "title": "Public apply test role"},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+
+        suf = __import__("uuid").uuid4().hex[:8]
+        email = f"publicapply{suf}@example.com"
+        r = client.post(
+            f"/api/v1/recruitment/public-apply/{req_code}",
+            json={
+                "email": email,
+                "password": "publicapply1",
+                "name": "Public Apply Tester",
+                "resume_url": None,
+            },
+        )
+        assert r.status_code == 201, r.text
+        data = r.json()
+        assert data.get("access_token")
+        assert data["application"]["stage"] == "applied"
+        assert data["application"]["candidate_user_id"]
+
+        r = client.post(
+            f"/api/v1/recruitment/public-apply/{req_code}",
+            json={
+                "email": email,
+                "password": "publicapply1",
+                "name": "Public Apply Tester",
+            },
+        )
+        assert r.status_code == 409, r.text
 
 
 def test_cert_issue_blocked_for_employee_when_min_actions():
@@ -233,7 +284,7 @@ def test_webhook_subscription_crud():
 
 
 def test_tracking_recent_activity_and_sla_log():
-    from datetime import UTC, datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from app.main import app
 
@@ -248,7 +299,7 @@ def test_tracking_recent_activity_and_sla_log():
             },
             headers=_hdr(tok),
         )
-        started = datetime.now(UTC) - timedelta(seconds=120)
+        started = datetime.now(timezone.utc) - timedelta(seconds=120)
         r = client.post(
             f"/api/v1/companies/{cid}/tracking/activity-logs",
             json={
@@ -339,7 +390,7 @@ def test_pay_run_department_scopes_payslip_employees():
 
         r = client.get("/api/v1/auth/me", headers=_hdr(tok))
         assert r.status_code == 200, r.text
-        _set_membership_role(cid, r.json()["id"], "hr_ops")
+        _set_membership_role(cid, r.json()["id"], "compensation_analytics")
 
         r = client.post(
             f"/api/v1/companies/{cid}/payroll/payslips",
@@ -532,7 +583,7 @@ def test_review_cycle_proposals_apply_and_off_cycle_payrun():
         r = client.get("/api/v1/auth/me", headers=_hdr(tok))
         assert r.status_code == 200
         admin_uid = r.json()["id"]
-        _set_membership_role(company_id, admin_uid, "hr_ops")
+        _set_membership_role(company_id, admin_uid, "compensation_analytics")
 
         r = client.post(
             f"/api/v1/companies/{company_id}/payroll/payslips",
@@ -559,3 +610,208 @@ def test_review_cycle_proposals_apply_and_off_cycle_payrun():
         )
         assert r.status_code == 200, r.text
         assert len(r.json()) >= 2
+
+
+def test_works_with_peers_same_manager_same_grade():
+    """Peers = same manager_id + same position grade (via employees.position_id)."""
+    from app.main import app
+
+    with TestClient(app) as client:
+        admin_tok, cid = _register_and_company(client)
+        r = client.get("/api/v1/me/companies", headers=_hdr(admin_tok))
+        assert r.status_code == 200, r.text
+        admin_uid = r.json()[0]["membership"]["user_id"]
+
+        r = client.post(
+            f"/api/v1/companies/{cid}/positions",
+            json={"name": "Peer test A", "department_id": None, "bucket": "temporary", "grade": 77},
+            headers=_hdr(admin_tok),
+        )
+        assert r.status_code == 201, r.text
+        pos_a = r.json()["id"]
+        r = client.post(
+            f"/api/v1/companies/{cid}/positions",
+            json={"name": "Peer test B", "department_id": None, "bucket": "temporary", "grade": 77},
+            headers=_hdr(admin_tok),
+        )
+        assert r.status_code == 201, r.text
+        pos_b = r.json()["id"]
+
+        r = client.post(
+            f"/api/v1/companies/{cid}/employees",
+            json={
+                "user_id": admin_uid,
+                "employee_code": "MGR-ROOT",
+                "status": "active",
+            },
+            headers=_hdr(admin_tok),
+        )
+        assert r.status_code == 201, r.text
+        mgr_emp_id = r.json()["id"]
+
+        esuf = uuid.uuid4().hex[:8]
+        r = client.post(
+            f"/api/v1/companies/{cid}/members/invite",
+            json={
+                "email": f"peer1{esuf}@example.com",
+                "role": "employee",
+                "password": "secret12",
+                "name": "Peer One",
+            },
+            headers=_hdr(admin_tok),
+        )
+        assert r.status_code == 201, r.text
+        uid1 = r.json()["user_id"]
+        r = client.post(
+            f"/api/v1/companies/{cid}/members/invite",
+            json={
+                "email": f"peer2{esuf}@example.com",
+                "role": "employee",
+                "password": "secret12",
+                "name": "Peer Two",
+            },
+            headers=_hdr(admin_tok),
+        )
+        assert r.status_code == 201, r.text
+        uid2 = r.json()["user_id"]
+
+        r = client.post(
+            f"/api/v1/companies/{cid}/employees",
+            json={
+                "user_id": uid1,
+                "employee_code": "P1",
+                "manager_id": mgr_emp_id,
+                "position_id": pos_a,
+                "status": "active",
+            },
+            headers=_hdr(admin_tok),
+        )
+        assert r.status_code == 201, r.text
+        r = client.post(
+            f"/api/v1/companies/{cid}/employees",
+            json={
+                "user_id": uid2,
+                "employee_code": "P2",
+                "manager_id": mgr_emp_id,
+                "position_id": pos_b,
+                "status": "active",
+            },
+            headers=_hdr(admin_tok),
+        )
+        assert r.status_code == 201, r.text
+
+        r = client.post("/api/v1/auth/login", json={"email": f"peer1{esuf}@example.com", "password": "secret12"})
+        assert r.status_code == 200, r.text
+        t1 = r.json()["access_token"]
+
+        r = client.get(f"/api/v1/companies/{cid}/employees/me/works-with-peers", headers=_hdr(t1))
+        assert r.status_code == 200, r.text
+        peers = r.json()
+        assert len(peers) == 1
+        assert peers[0]["employee_code"] == "P2"
+        assert peers[0]["grade"] == 77
+
+
+def test_leave_approvals_and_cross_employee_balances_are_hr_ops_only():
+    from app.main import app
+
+    with TestClient(app) as client:
+        tok, cid = _register_and_company(client)
+        suf = uuid.uuid4().hex[:8]
+        r = client.post(
+            f"/api/v1/companies/{cid}/employees",
+            json={"employee_code": f"LV{suf}", "status": "active"},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+        emp_id = r.json()["id"]
+
+        # Company admin can create a request for an employee, but cannot approve it.
+        r = client.post(
+            f"/api/v1/companies/{cid}/leave/requests",
+            json={
+                "employee_id": emp_id,
+                "type": "paid",
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-12",
+                "reason": "Family event",
+            },
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+        req_id = r.json()["id"]
+
+        r = client.patch(
+            f"/api/v1/companies/{cid}/leave/requests/{req_id}/decision",
+            json={"status": "approved"},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 403
+
+        # Company admin cannot read other employees' leave summaries.
+        r = client.get(
+            f"/api/v1/companies/{cid}/leave/summary",
+            params={"year": 2026, "for_employee_id": emp_id},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 403
+
+
+def test_progress_dashboard_counts_compensation_actions():
+    from app.main import app
+
+    with TestClient(app) as client:
+        tok, cid = _register_and_company(client)
+        r = client.post(
+            f"/api/v1/companies/{cid}/payroll/grade-bands",
+            headers=_hdr(tok),
+            json={
+                "band_code": "L7",
+                "min_annual": 900000,
+                "mid_annual": 1000000,
+                "max_annual": 1200000,
+                "effective_from": "2026-01-01",
+                "org_position_grade_min": 7,
+            },
+        )
+        assert r.status_code == 201, r.text
+
+        r = client.get(
+            f"/api/v1/companies/{cid}/certification/progress/me/dashboard",
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 200, r.text
+        modules = {m["module"]: m for m in r.json()["module_breakdown"]}
+        assert "compensation" in modules
+        assert modules["compensation"]["action_count"] >= 1
+
+
+def test_progress_dashboard_counts_policy_download_as_compliance_action():
+    from app.main import app
+
+    with TestClient(app) as client:
+        tok, cid = _register_and_company(client)
+        files = {"file": ("policy.txt", b"policy body", "text/plain")}
+        data = {"title": "Code of conduct", "description": "Policy test"}
+        r = client.post(
+            f"/api/v1/companies/{cid}/audits/policies",
+            headers=_hdr(tok),
+            data=data,
+            files=files,
+        )
+        assert r.status_code == 200, r.text
+        pid = r.json()["id"]
+
+        r = client.get(
+            f"/api/v1/companies/{cid}/audits/policies/{pid}/download",
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 200, r.text
+
+        r = client.get(
+            f"/api/v1/companies/{cid}/certification/progress/me/dashboard",
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 200, r.text
+        modules = {m["module"]: m for m in r.json()["module_breakdown"]}
+        assert modules["compliance"]["action_count"] >= 2

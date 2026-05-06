@@ -34,6 +34,7 @@ from app.schemas.compensation_engagement import (
     CompensationReviewProposalUpdate,
 )
 from app.services.audit import write_audit
+from app.services.activity_tracking import log_tracked_hr_action
 from app.services.employee_helpers import get_employee_by_id
 from app.services.simcash_engine import parse_salary_components
 
@@ -106,7 +107,7 @@ def create_review_cycle(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> CompensationReviewCycle:
-    user, _ = ctx
+    user, membership = ctx
     row = CompensationReviewCycle(
         id=uuid_str(),
         company_id=company_id,
@@ -127,6 +128,22 @@ def create_review_cycle(
         entity_id=row.id,
         action="create",
         changes_json={"label": row.label, "fiscal_year": row.fiscal_year},
+    )
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="compensation",
+        action_type="review_cycle_create",
+        action_detail=row.label,
+        entity_type="compensation_review_cycle",
+        entity_id=row.id,
+        quality_factors={
+            "completeness": 95.0 if row.budget_amount is not None else 88.0,
+            "accuracy": 90.0,
+            "process_adherence": 90.0,
+        },
     )
     db.commit()
     db.refresh(row)
@@ -201,7 +218,7 @@ def create_guideline(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> CompensationReviewGuideline:
-    user, _ = ctx
+    user, membership = ctx
     _cycle_or_404(db, company_id, cycle_id)
     if body.min_increase_pct > body.max_increase_pct:
         raise HTTPException(status_code=400, detail="min_increase_pct must be ≤ max_increase_pct")
@@ -223,6 +240,22 @@ def create_guideline(
         entity_id=row.id,
         action="create",
         changes_json={"cycle_id": cycle_id, "band_code": row.band_code},
+    )
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="compensation",
+        action_type="guideline_create",
+        action_detail=row.band_code,
+        entity_type="compensation_review_guideline",
+        entity_id=row.id,
+        quality_factors={
+            "completeness": 96.0,
+            "accuracy": 92.0,
+            "process_adherence": 91.0,
+        },
     )
     try:
         db.commit()
@@ -324,7 +357,7 @@ def create_proposal(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_PAYROLL_OPS))],
     db: Annotated[Session, Depends(get_db)],
 ) -> CompensationReviewProposal:
-    user, _ = ctx
+    user, membership = ctx
     cy = _cycle_or_404(db, company_id, cycle_id)
     if cy.state == "closed":
         raise HTTPException(status_code=400, detail="Cannot add proposals to a closed cycle")
@@ -351,6 +384,22 @@ def create_proposal(
         entity_id=row.id,
         action="create",
         changes_json={"employee_id": body.employee_id},
+    )
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="compensation",
+        action_type="proposal_create",
+        action_detail=body.employee_id,
+        entity_type="compensation_review_proposal",
+        entity_id=row.id,
+        quality_factors={
+            "completeness": 94.0 if body.justification else 86.0,
+            "accuracy": 90.0,
+            "process_adherence": 89.0,
+        },
     )
     try:
         db.commit()

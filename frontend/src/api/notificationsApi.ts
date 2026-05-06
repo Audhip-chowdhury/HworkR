@@ -18,3 +18,11 @@ export type NotificationRow = {
 export function listNotifications(companyId: string) {
   return apiFetch<NotificationRow[]>(companyPath(companyId, '/notifications'))
 }
+
+/** Marks notifications read (omit ids to mark all unread for the current user in the company). */
+export function markNotificationsRead(companyId: string, notificationIds?: string[]) {
+  return apiFetch<void>(companyPath(companyId, '/notifications/mark-read'), {
+    method: 'POST',
+    json: { notification_ids: notificationIds ?? [] },
+  })
+}

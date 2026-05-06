@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.api.v1 import (
     analytics,
+    audits,
     auth,
     certification,
     company_registration,
@@ -25,6 +26,7 @@ from app.api.v1 import (
     performance_learning,
     platform,
     recruitment,
+    recruitment_public,
     scenarios,
     sso,
     tracking,
@@ -77,6 +79,7 @@ v1.include_router(company_registration.router)
 v1.include_router(platform.router)
 v1.include_router(organization.router)
 v1.include_router(employees.router)
+v1.include_router(audits.router)
 v1.include_router(hr_ops.router)
 v1.include_router(performance_learning.router)
 v1.include_router(compensation_engagement.router)
@@ -85,6 +88,7 @@ v1.include_router(tracking.router)
 v1.include_router(certification.router)
 v1.include_router(analytics.router)
 v1.include_router(recruitment.router)
+v1.include_router(recruitment_public.router)
 v1.include_router(notifications.router)
 v1.include_router(inbox.router)
 v1.include_router(workflows.router)

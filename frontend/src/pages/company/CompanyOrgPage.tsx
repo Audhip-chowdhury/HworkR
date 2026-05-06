@@ -5,6 +5,7 @@ import { useAuth, type Company } from '../../auth/AuthContext'
 import { listGradeBands, type CompensationGradeBand } from '../../api/compensationApi'
 import { OrgHierarchyTree, type PositionNode } from './OrgHierarchyTree'
 import styles from './CompanyWorkspacePage.module.css'
+import orgStyles from './CompanyOrgPage.module.css'
 
 type Dept = {
   id: string
@@ -237,8 +238,15 @@ export function CompanyOrgPage() {
         </div>
       ) : null}
 
-      <div className={styles.orgLayout}>
-        <div className={styles.orgMain}>
+      {restoredNotice ? (
+        <div style={{ margin: '0 0 1rem', padding: '0.65rem 1rem', background: '#fff8e1', border: '1px solid #f59e0b', borderRadius: 6, fontSize: '0.875rem', color: '#92400e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+          <span>Position form restored — select the grade you just configured from Grade Structure, then submit.</span>
+          <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '1rem', color: '#92400e', lineHeight: 1 }} onClick={() => setRestoredNotice(false)} aria-label="Dismiss">×</button>
+        </div>
+      ) : null}
+
+      <div className={`${styles.orgLayout} ${orgStyles.orgLayoutWideTree}`}>
+        <div className={`${styles.orgMain} ${orgStyles.orgMainCompact}`}>
           <p className={styles.flowHint}>
             <strong>Departments</strong> group positions. <strong>Positions</strong> can sit in a
             department, or in <strong>C-suite</strong> / <strong>Temporary</strong> (not tied to a
@@ -248,11 +256,18 @@ export function CompanyOrgPage() {
 
           <section className={styles.card}>
             <h3 className={styles.h3}>Departments ({depts.length})</h3>
-            <ul className={styles.ul}>
-              {depts.map((d) => (
-                <li key={d.id}>{d.name}</li>
-              ))}
-            </ul>
+            {depts.length === 0 ? (
+              <div className={orgStyles.deptEmpty}>No departments yet. Add your first department below.</div>
+            ) : (
+              <div className={orgStyles.deptGrid}>
+                {depts.map((d) => (
+                  <article key={d.id} className={orgStyles.deptTile}>
+                    <div className={orgStyles.deptTileName}>{d.name}</div>
+                    <div className={orgStyles.deptTileMeta}>Level {d.level}</div>
+                  </article>
+                ))}
+              </div>
+            )}
             {isAdmin ? (
               <form onSubmit={addDept} className={styles.inline}>
                 <input
@@ -287,53 +302,66 @@ export function CompanyOrgPage() {
                 </div>
                 <div className={styles.formRow}>
                   <span className={styles.labelBlock}>Placement</span>
-                  <label className={styles.radio}>
-                    <input
-                      type="radio"
-                      name="placement"
-                      checked={placement === 'department'}
-                      onChange={() => setPlacement('department')}
-                    />
-                    Department
-                  </label>
-                  <label className={styles.radio}>
-                    <input
-                      type="radio"
-                      name="placement"
-                      checked={placement === 'c_suite'}
-                      onChange={() => setPlacement('c_suite')}
-                    />
-                    C-suite
-                  </label>
-                  <label className={styles.radio}>
-                    <input
-                      type="radio"
-                      name="placement"
-                      checked={placement === 'temporary'}
-                      onChange={() => setPlacement('temporary')}
-                    />
-                    Temporary
-                  </label>
+                  <div className={orgStyles.pillGroup}>
+                    <label
+                      className={`${orgStyles.pillOption} ${placement === 'department' ? orgStyles.pillOptionActive : ''}`}
+                    >
+                      <input
+                        className={orgStyles.pillInput}
+                        type="radio"
+                        name="placement"
+                        checked={placement === 'department'}
+                        onChange={() => setPlacement('department')}
+                      />
+                      Department
+                    </label>
+                    <label
+                      className={`${orgStyles.pillOption} ${placement === 'c_suite' ? orgStyles.pillOptionActive : ''}`}
+                    >
+                      <input
+                        className={orgStyles.pillInput}
+                        type="radio"
+                        name="placement"
+                        checked={placement === 'c_suite'}
+                        onChange={() => setPlacement('c_suite')}
+                      />
+                      C-suite
+                    </label>
+                    <label
+                      className={`${orgStyles.pillOption} ${placement === 'temporary' ? orgStyles.pillOptionActive : ''}`}
+                    >
+                      <input
+                        className={orgStyles.pillInput}
+                        type="radio"
+                        name="placement"
+                        checked={placement === 'temporary'}
+                        onChange={() => setPlacement('temporary')}
+                      />
+                      Temporary
+                    </label>
+                  </div>
                 </div>
                 {placement === 'department' ? (
                   <label className={styles.labelBlock}>
                     Department
-                    <select
-                      className={styles.input}
-                      value={departmentId}
-                      onChange={(e) => setDepartmentId(e.target.value)}
-                      required
-                    >
-                      {depts.length === 0 ? (
-                        <option value="">Add a department first</option>
-                      ) : (
-                        depts.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))
-                      )}
-                    </select>
+                    <span className={orgStyles.selectWrap}>
+                      <select
+                        className={`${styles.input} ${orgStyles.prettySelect}`}
+                        value={departmentId}
+                        onChange={(e) => setDepartmentId(e.target.value)}
+                        required
+                      >
+                        {depts.length === 0 ? (
+                          <option value="">Add a department first</option>
+                        ) : (
+                          depts.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </span>
                   </label>
                 ) : null}
                 <label className={styles.labelBlock}>
@@ -366,33 +394,37 @@ export function CompanyOrgPage() {
                 </label>
                 <label className={styles.labelBlock}>
                   Reports to
-                  <select
-                    className={styles.input}
-                    value={reportsToId}
-                    onChange={(e) => setReportsToId(e.target.value)}
-                  >
-                    <option value="">— None (root) —</option>
-                    {reportOptions.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {positionLabel(p)}
-                      </option>
-                    ))}
-                  </select>
+                  <span className={orgStyles.selectWrap}>
+                    <select
+                      className={`${styles.input} ${orgStyles.prettySelect}`}
+                      value={reportsToId}
+                      onChange={(e) => setReportsToId(e.target.value)}
+                    >
+                      <option value="">— None (root) —</option>
+                      {reportOptions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {positionLabel(p)}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
                 </label>
                 <label className={styles.labelBlock}>
                   Works with
-                  <select
-                    className={styles.input}
-                    value={worksWithId}
-                    onChange={(e) => setWorksWithId(e.target.value)}
-                  >
-                    <option value="">— None —</option>
-                    {worksOptions.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {positionLabel(p)}
-                      </option>
-                    ))}
-                  </select>
+                  <span className={orgStyles.selectWrap}>
+                    <select
+                      className={`${styles.input} ${orgStyles.prettySelect}`}
+                      value={worksWithId}
+                      onChange={(e) => setWorksWithId(e.target.value)}
+                    >
+                      <option value="">— None —</option>
+                      {worksOptions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {positionLabel(p)}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
                 </label>
                 <div className={styles.formActions}>
                   <button type="submit" className={styles.btnSm} disabled={pending}>
@@ -479,8 +511,8 @@ export function CompanyOrgPage() {
           </section>
         </div>
 
-        <aside className={styles.orgAside}>
-          <div className={styles.chartCard}>
+        <aside className={`${styles.orgAside} ${orgStyles.orgTreePane}`}>
+          <div className={`${styles.chartCard} ${orgStyles.orgTreeCard}`}>
             <OrgHierarchyTree companyName={displayCompany} positions={positions} />
           </div>
         </aside>

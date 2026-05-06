@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import * as trackingApi from '../../../api/trackingApi'
 import { useAuth } from '../../../auth/AuthContext'
-import { canListAllActivityLogs } from '../../../company/navConfig'
+import { canListAllActivityLogs } from '../../../company/companyAccess'
 import type { ActivityLog, ScoreDashboard, ScoringRule } from '../../../api/types'
 import styles from '../CompanyWorkspacePage.module.css'
 

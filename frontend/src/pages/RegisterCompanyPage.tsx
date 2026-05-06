@@ -68,8 +68,8 @@ export function RegisterCompanyPage() {
       title="Register company"
       subtitle="Request approval to create your organization"
       navItems={[
-        { to: '/', label: 'Home' },
-        { to: '/register-company', label: 'Register company' },
+        { kind: 'link', to: '/', label: 'Home' },
+        { kind: 'link', to: '/register-company', label: 'Register company' },
       ]}
     >
       {error ? <p className={styles.error}>{error}</p> : null}

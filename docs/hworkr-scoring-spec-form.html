@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HworkR — Production scoring specification</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4d;
+      --text: #e6edf3;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --accent-dim: #1d4ed8;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --radius: 10px;
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --mono: ui-monospace, "Cascadia Code", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      font-size: 15px;
+    }
+
+    a { color: var(--accent); }
+
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 1.25rem 1rem 3rem;
+    }
+
+    .hero {
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 0 0 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 60ch;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.75rem 0;
+      background: linear-gradient(180deg, var(--bg) 70%, transparent);
+      margin: 0 -0.5rem 1rem;
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+    .toolbar .status {
+      margin-left: auto;
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+    @media (max-width: 640px) {
+      .toolbar .status { width: 100%; margin-left: 0; }
+    }
+
+    button {
+      font: inherit;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      padding: 0.45rem 0.85rem;
+      border-radius: 8px;
+    }
+    button:hover { border-color: var(--accent); color: #fff; }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    button.primary:hover { background: var(--accent-dim); }
+    button.danger:hover { border-color: #ef4444; color: #fca5a5; }
+
+    .toc {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .toc h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 0.6rem; }
+    .toc ul { margin: 0; padding-left: 1.1rem; }
+    .toc a { text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+    section > header {
+      padding: 0.9rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    section > header:hover { background: rgba(59, 130, 246, 0.06); }
+    section > header h2 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+    section > header .chev { color: var(--muted); font-size: 0.9rem; transition: transform 0.2s; }
+    section.collapsed > header .chev { transform: rotate(-90deg); }
+    section.collapsed .section-body { display: none; }
+
+    .section-body { padding: 1rem 1.1rem 1.2rem; }
+
+    .field {
+      margin-bottom: 1rem;
+    }
+    .field:last-child { margin-bottom: 0; }
+    label, .label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 0.35rem;
+    }
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin: 0.25rem 0 0.4rem;
+      line-height: 1.4;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="date"],
+    textarea,
+    select {
+      width: 100%;
+      max-width: 100%;
+      font: inherit;
+      padding: 0.5rem 0.65rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+    }
+    textarea { min-height: 5rem; resize: vertical; }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 600px) { .row2 { grid-template-columns: 1fr; } }
+
+    .check-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1.25rem;
+    }
+    .check-grid label { font-weight: 400; display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; }
+    .check-grid input { width: auto; }
+
+    .weight-sum {
+      font-family: var(--mono);
+      font-size: 0.9rem;
+    }
+    .weight-sum.ok { color: var(--ok); }
+    .weight-sum.bad { color: #f87171; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.45rem 0.5rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: var(--bg); color: var(--muted); font-weight: 500; }
+    tr:nth-child(even) td { background: rgba(0,0,0,0.15); }
+
+    .table-actions { margin-top: 0.5rem; }
+    .small { font-size: 0.85rem; }
+
+    .repeater-empty {
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 0.5rem 0;
+    }
+
+    @media print {
+      .toolbar, .toc { display: none; }
+      section { break-inside: avoid; }
+      section.collapsed .section-body { display: block !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1>HworkR — Production scoring specification</h1>
+      <p>Fill each section, save in your browser, then export JSON to share with the team or an AI assistant. All data stays local unless you export or copy it.</p>
+    </div>
+
+    <div class="toolbar" role="toolbar" aria-label="Form actions">
+      <button type="button" class="primary" id="btn-save">Save to this browser</button>
+      <button type="button" id="btn-load">Reload from save</button>
+      <button type="button" id="btn-export">Download JSON</button>
+      <button type="button" id="btn-copy">Copy JSON</button>
+      <button type="button" class="danger" id="btn-clear">Clear all</button>
+      <span class="status" id="save-status" aria-live="polite"></span>
+    </div>
+
+    <nav class="toc" aria-label="On this page">
+      <h2>Jump to</h2>
+      <ul>
+        <li><a href="#sec-meta">Meta &amp; scope</a></li>
+        <li><a href="#sec-who">Who and what is scored</a></li>
+        <li><a href="#sec-dimensions">Four dimensions (weights)</a></li>
+        <li><a href="#sec-completeness">Completeness — required fields</a></li>
+        <li><a href="#sec-completeness-calc">Completeness — calculation</a></li>
+        <li><a href="#sec-accuracy">Accuracy — validation rules</a></li>
+        <li><a href="#sec-gaps">Data gaps</a></li>
+        <li><a href="#sec-process">Process adherence</a></li>
+        <li><a href="#sec-critical">Critical failures</a></li>
+        <li><a href="#sec-sla">Timeliness — SLAs</a></li>
+        <li><a href="#sec-aggregation">Aggregation &amp; reporting</a></li>
+        <li><a href="#sec-fairness">Fairness &amp; edge cases</a></li>
+        <li><a href="#sec-retention">Retention, privacy, disputes</a></li>
+        <li><a href="#sec-eng">Engineering constraints</a></li>
+        <li><a href="#sec-open">Open questions</a></li>
+      </ul>
+    </nav>
+
+    <form id="spec-form" autocomplete="on">
+      <section id="sec-meta" data-section>
+        <header>
+          <h2>Meta &amp; scope</h2>
+          <span class="chev" aria-hidden="true">▼</span>
+        </header>
+        <div class="section-body">
+          <div class="row2">
+            <div class="field">
+              <label for="owner">Document owner</label>
+              <p class="hint">Name and role of who owns the rules.</p>
+              <input type="text" id="owner" name="owner" placeholder="e.g. Alex — product" />
+            </div>
+            <div class="field">
+              <label for="version">Version</label>
+              <p class="hint">Bump when rules change.</p>
+              <input type="text" id="version" name="version" placeholder="e.g. 0.1" />
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="golive">Target go-live (scoring)</label>
+              <input type="text" id="golive" name="golive" placeholder="Date or phase" />
+            </div>
+            <div class="field">
+              <label for="scope_use">Use case</label>
+              <p class="hint">Training / certification only vs. also internal pilot.</p>
+              <input type="text" id="scope_use" name="scope_use" placeholder="e.g. training platform + internal pilot" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-who" data-section>
+        <header>
+          <h2>Who and what is scored</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <div class="field">
+            <span class="label">Roles with a practitioner score</span>
+            <p class="hint">Who should be measured for certification or leaderboards, if you use them.</p>
+            <div class="check-grid">
+              <label><input type="checkbox" name="role_ca" value="1" /> company_admin</label>
+              <label><input type="checkbox" name="role_ta" value="1" /> talent_acquisition</label>
+              <label><input type="checkbox" name="role_hr" value="1" /> hr_ops</label>
+              <label><input type="checkbox" name="role_ld" value="1" /> ld_performance</label>
+              <label><input type="checkbox" name="role_comp" value="1" /> compensation_analytics</label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="roles_excluded">Roles excluded or scored separately</label>
+            <p class="hint">e.g. “employee: profile completion only, not HR quality”.</p>
+            <textarea id="roles_excluded" name="roles_excluded" rows="2"></textarea>
+          </div>
+          <div class="field">
+            <span class="label">Modules in v1 scoring</span>
+            <p class="hint">Unlisted modules can be reporting-only in v1.</p>
+            <div class="check-grid">
+              <label><input type="checkbox" name="mod_employees" value="1" /> employees</label>
+              <label><input type="checkbox" name="mod_leave" value="1" /> leave &amp; attendance</label>
+              <label><input type="checkbox" name="mod_compliance" value="1" /> compliance / audit</label>
+              <label><input type="checkbox" name="mod_recruit" value="1" /> recruitment</label>
+              <label><input type="checkbox" name="mod_pl" value="1" /> performance / L&amp;D</label>
+              <label><input type="checkbox" name="mod_pay" value="1" /> payroll &amp; engagement</label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="scoring_mode">Scoring style</label>
+            <p class="hint">Per action (granular) vs rolling (less noisy).</p>
+            <select id="scoring_mode" name="scoring_mode">
+              <option value="">Select…</option>
+              <option value="per_action">Per action + optional rollup</option>
+              <option value="rolling">Rolling (daily/weekly) average as source of truth</option>
+              <option value="both">Both (document how they combine)</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-dimensions" data-section>
+        <header>
+          <h2>Four dimensions — global policy</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <p class="hint">Weights should sum to <strong>1.0</strong> (aligns with backend <code>SCORING_WEIGHTS</code>).</p>
+          <div class="row2">
+            <div class="field">
+              <label for="w_complete">completeness</label>
+              <input type="number" id="w_complete" name="w_complete" step="0.01" min="0" max="1" placeholder="0.25" />
+            </div>
+            <div class="field">
+              <label for="w_accuracy">accuracy</label>
+              <input type="number" id="w_accuracy" name="w_accuracy" step="0.01" min="0" max="1" placeholder="0.30" />
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="w_time">timeliness</label>
+              <input type="number" id="w_time" name="w_time" step="0.01" min="0" max="1" placeholder="0.20" />
+            </div>
+            <div class="field">
+              <label for="w_process">process_adherence</label>
+              <input type="number" id="w_process" name="w_process" step="0.01" min="0" max="1" placeholder="0.25" />
+            </div>
+          </div>
+          <p class="weight-sum" id="weight-sum" aria-live="polite">Sum: —</p>
+          <div class="field">
+            <label for="min_composite">Minimum composite to “pass” a period</label>
+            <p class="hint">e.g. 80; tie to certification if applicable.</p>
+            <input type="text" id="min_composite" name="min_composite" placeholder="e.g. 80" />
+          </div>
+          <div class="field">
+            <label for="dim_floor">Floor / cap per dimension</label>
+            <p class="hint">e.g. 0–100, no sub-zero.</p>
+            <input type="text" id="dim_floor" name="dim_floor" />
+          </div>
+          <div class="field">
+            <span class="label">Critical failure behavior</span>
+            <div class="check-grid">
+              <label><input type="radio" name="crit_behavior" value="" /> (not set)</label>
+              <label><input type="radio" name="crit_behavior" value="zero" /> composite → 0</label>
+              <label><input type="radio" name="crit_behavior" value="cap50" /> cap at 50</label>
+              <label><input type="radio" name="crit_behavior" value="flag" /> flag only, no score change</label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-completeness" data-section>
+        <header>
+          <h2>Completeness — required fields by entity</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <p class="hint">Add one row per entity. List API fields or JSON keys. Use the notes column for per-company overrides later.</p>
+          <div id="completeness-rows"></div>
+          <p class="repeater-empty" id="completeness-empty" hidden>No rows yet — add one below.</p>
+          <div class="table-actions">
+            <button type="button" id="add-completeness">+ Add row</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-completeness-calc" data-section>
+        <header>
+          <h2>Completeness — how it is calculated</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <div class="field">
+            <span class="label">Method</span>
+            <div class="check-grid">
+              <label><input type="radio" name="comp_method" value="percent" /> % of required fields</label>
+              <label><input type="radio" name="comp_method" value="binary" /> Binary (all or nothing)</label>
+              <label><input type="radio" name="comp_method" value="weighted" /> Weighted by field</label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="comp_weights_detail">If weighted — list weights (must sum to 100%)</label>
+            <textarea id="comp_weights_detail" name="comp_weights_detail" placeholder="e.g. emergency contact 30%, phone 20%, …"></textarea>
+          </div>
+          <div class="field">
+            <label for="comp_partial">Partial JSON (e.g. half emergency contact)</label>
+            <textarea id="comp_partial" name="comp_partial" rows="2" placeholder="0% / 50% / custom: …"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-accuracy" data-section>
+        <header>
+          <h2>Accuracy — validation rules</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <p class="hint">If you cannot write a rule as a data comparison, mark it for v2 or human review.</p>
+          <div id="accuracy-rows"></div>
+          <div class="table-actions">
+            <button type="button" id="add-accuracy">+ Add rule</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-gaps" data-section>
+        <header>
+          <h2>Data gaps (fields or integrations to add)</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <div id="gap-rows"></div>
+          <div class="table-actions">
+            <button type="button" id="add-gap">+ Add gap</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-process" data-section>
+        <header>
+          <h2>Process adherence — workflows</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <p class="hint">List ordered stages, allowed vs forbidden moves, and rough detection (e.g. Application.stage + timestamps).</p>
+          <div id="process-rows"></div>
+          <div class="table-actions">
+            <button type="button" id="add-process">+ Add workflow</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-critical" data-section>
+        <header>
+          <h2>Critical failures</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <div id="crit-rows"></div>
+          <div class="table-actions">
+            <button type="button" id="add-crit">+ Add rule</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-sla" data-section>
+        <header>
+          <h2>Timeliness — SLAs</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <p class="hint">For each action: when does the clock start, when does it end, what is the SLA, calendar vs business.</p>
+          <div id="sla-rows"></div>
+          <div class="table-actions">
+            <button type="button" id="add-sla">+ Add SLA</button>
+          </div>
+          <div class="field" style="margin-top:1rem;">
+            <label for="late_formula">Scoring curve when late</label>
+            <p class="hint">e.g. max(0, 100 - 100 × elapsed/SLA), or step rules.</p>
+            <textarea id="late_formula" name="late_formula" rows="2"></textarea>
+          </div>
+          <div class="field">
+            <span class="label">After SLA is exceeded</span>
+            <div class="check-grid">
+              <label><input type="radio" name="late_after" value="degrade" /> keep degrading</label>
+              <label><input type="radio" name="late_after" value="floor0" /> floor at 0</label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-aggregation" data-section>
+        <header>
+          <h2>Aggregation &amp; reporting</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <div class="row2">
+            <div class="field">
+              <label for="rollup">Rollup period</label>
+              <select id="rollup" name="rollup">
+                <option value="">Select…</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="cert">Per certification window</option>
+                <option value="custom">Custom (describe in notes)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="user_score_method">User score =</label>
+              <input type="text" id="user_score_method" name="user_score_method" placeholder="mean of actions, weighted, drop worst 5%…" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="min_actions">Minimum actions before score is meaningful</label>
+            <input type="text" id="min_actions" name="min_actions" placeholder="e.g. 10 actions in 30 days" />
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-fairness" data-section>
+        <header>
+          <h2>Fairness &amp; edge cases</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <div class="field">
+            <label for="fairness_new">New HR user / new company</label>
+            <p class="hint">Grace, N/A until N actions, etc.</p>
+            <textarea id="fairness_new" name="fairness_new" rows="2"></textarea>
+          </div>
+          <div class="field">
+            <label for="weekends">Weekends / holidays for SLAs</label>
+            <textarea id="weekends" name="weekends" rows="2"></textarea>
+          </div>
+          <div class="field">
+            <label for="third_party">Waiting on third party (candidate, manager)</label>
+            <textarea id="third_party" name="third_party" rows="2" placeholder="pause SLA / N/A / still counts"></textarea>
+          </div>
+          <div class="field">
+            <label for="override">Data fix / admin override of score</label>
+            <textarea id="override" name="override" rows="2"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-retention" data-section>
+        <header>
+          <h2>Retention, privacy, disputes</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <div class="field">
+            <label for="retention">Retention (activity / audit)</label>
+            <input type="text" id="retention" name="retention" placeholder="e.g. 2 years" />
+          </div>
+          <div class="field">
+            <label for="pii">PII in context_json</label>
+            <p class="hint">Forbidden, or list allowed keys.</p>
+            <textarea id="pii" name="pii" rows="2"></textarea>
+          </div>
+          <div class="field">
+            <label for="disputes">Disputes and who can override</label>
+            <textarea id="disputes" name="disputes" rows="3"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-eng" data-section>
+        <header>
+          <h2>Engineering constraints</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <div class="field">
+            <span class="label">Scoring on request (sync)</span>
+            <div class="check-grid">
+              <label><input type="radio" name="eng_sync" value="yes" /> must be fast / synchronous</label>
+              <label><input type="radio" name="eng_sync" value="async" /> async is OK</label>
+            </div>
+          </div>
+          <div class="field">
+            <span class="label">If scoring code throws, main HR action should</span>
+            <div class="check-grid">
+              <label><input type="radio" name="eng_fail" value="commit" /> still save</label>
+              <label><input type="radio" name="eng_fail" value="fail" /> fail the request</label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-open" data-section>
+        <header>
+          <h2>Open questions &amp; blockers</h2>
+          <span class="chev">▼</span>
+        </header>
+        <div class="section-body">
+          <div class="field">
+            <label for="openq">List questions and answers as you have them</label>
+            <textarea id="openq" name="openq" rows="6" placeholder="1. e.g. Standard comp keys in offer JSON? …"></textarea>
+          </div>
+        </div>
+      </section>
+    </form>
+  </div>
+
+  <script>
+(function () {
+  const LS_KEY = "hworkr-scoring-spec-v1";
+  const statusEl = document.getElementById("save-status");
+  const form = document.getElementById("spec-form");
+
+  function setStatus(msg, t) {
+    statusEl.textContent = msg;
+    if (t) {
+      clearTimeout(setStatus._t);
+      setStatus._t = setTimeout(() => { statusEl.textContent = ""; }, t);
+    }
+  }
+
+  /* ——— collapsible sections ——— */
+  document.querySelectorAll("section[data-section] > header").forEach((hdr) => {
+    hdr.addEventListener("click", () => {
+      hdr.parentElement.classList.toggle("collapsed");
+    });
+  });
+
+  /* ——— weight sum ——— */
+  const wIds = ["w_complete", "w_accuracy", "w_time", "w_process"];
+  function updateWeightSum() {
+    const el = document.getElementById("weight-sum");
+    let s = 0;
+    let any = false;
+    wIds.forEach((id) => {
+      const n = parseFloat(document.getElementById(id).value);
+      if (!Number.isNaN(n)) { s += n; any = true; }
+    });
+    if (!any) {
+      el.textContent = "Sum: — (enter all four weights)";
+      el.className = "weight-sum";
+      return;
+    }
+    el.textContent = "Sum: " + s.toFixed(2) + (Math.abs(s - 1) < 0.001 ? " ✓" : " (should be 1.0)");
+    el.className = "weight-sum " + (Math.abs(s - 1) < 0.02 ? "ok" : "bad");
+  }
+  wIds.forEach((id) => {
+    const inp = document.getElementById(id);
+    if (inp) inp.addEventListener("input", updateWeightSum);
+  });
+  updateWeightSum();
+
+  /* ——— repeater: completeness ——— */
+  const compContainer = document.getElementById("completeness-rows");
+  const compEmpty = document.getElementById("completeness-empty");
+  const completenessTemplate = () => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input type="text" class="c-entity" style="min-width:10rem" placeholder="Entity" /></td>
+      <td><input type="text" class="c-req" style="min-width:12rem" placeholder="Required fields" /></td>
+      <td><input type="text" class="c-opt" placeholder="Optional" /></td>
+      <td><input type="text" class="c-note" placeholder="Notes" /></td>
+      <td><button type="button" class="row-del" title="Remove row">✕</button></td>
+    `;
+    tr.querySelector(".row-del").addEventListener("click", () => { tr.remove(); compRefresh(); });
+    return tr;
+  };
+  function compRefresh() {
+    const n = compContainer.querySelectorAll("tr").length;
+    compEmpty.hidden = n > 0;
+  }
+  document.getElementById("add-completeness").addEventListener("click", () => {
+    if (!compContainer.querySelector("table")) {
+      const table = document.createElement("table");
+      table.innerHTML = "<thead><tr><th>Entity / workflow</th><th>Required fields</th><th>Optional</th><th>Notes</th><th></th></tr></thead><tbody></tbody>";
+      compContainer.appendChild(table);
+    }
+    compContainer.querySelector("tbody").appendChild(completenessTemplate());
+    compRefresh();
+  });
+
+  function genericTable(containerId, addId, colHeaders, makeRow) {
+    const c = document.getElementById(containerId);
+    document.getElementById(addId).addEventListener("click", () => {
+      if (!c.querySelector("table")) {
+        const table = document.createElement("table");
+        const h = colHeaders.map((h) => "<th>" + h + "</th>").join("");
+        table.innerHTML = "<thead><tr>" + h + "<th></th></tr></thead><tbody></tbody>";
+        c.appendChild(table);
+      }
+      const tr = makeRow();
+      c.querySelector("tbody").appendChild(tr);
+    });
+  }
+
+  genericTable("accuracy-rows", "add-accuracy",
+    ["Rule name", "Condition", "Pass", "Fail / partial", "Applies to"],
+    function () {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><input type="text" class="a-name" /></td>
+        <td><input type="text" class="a-cond" /></td>
+        <td><input type="text" class="a-pass" /></td>
+        <td><input type="text" class="a-fail" /></td>
+        <td><input type="text" class="a-apply" /></td>
+        <td><button type="button" class="row-del">✕</button></td>`;
+      tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+      return tr;
+    }
+  );
+
+  genericTable("gap-rows", "add-gap", ["Gap", "What to add", "Priority"],
+    function () {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><input type="text" class="g-gap" /></td>
+        <td><input type="text" class="g-add" /></td>
+        <td><input type="text" class="g-pri" /></td>
+        <td><button type="button" class="row-del">✕</button></td>`;
+      tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+      return tr;
+    }
+  );
+
+  genericTable("process-rows", "add-process",
+    ["Process", "States (ordered)", "Allowed transitions", "Forbidden", "Detection in DB"],
+    function () {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><input type="text" class="p-name" /></td>
+        <td><input type="text" class="p-states" /></td>
+        <td><input type="text" class="p-allow" /></td>
+        <td><input type="text" class="p-forbid" /></td>
+        <td><input type="text" class="p-detect" /></td>
+        <td><button type="button" class="row-del">✕</button></td>`;
+      tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+      return tr;
+    }
+  );
+
+  genericTable("crit-rows", "add-crit", ["Event", "Why critical", "Score outcome"],
+    function () {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><input type="text" class="k-ev" /></td>
+        <td><input type="text" class="k-why" /></td>
+        <td><input type="text" class="k-out" /></td>
+        <td><button type="button" class="row-del">✕</button></td>`;
+      tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+      return tr;
+    }
+  );
+
+  genericTable("sla-rows", "add-sla",
+    ["Module", "Action", "Start (clock)", "End (clock)", "SLA", "Cal / biz", "Notes"],
+    function () {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><input type="text" class="s-mod" /></td>
+        <td><input type="text" class="s-act" /></td>
+        <td><input type="text" class="s-start" /></td>
+        <td><input type="text" class="s-end" /></td>
+        <td><input type="text" class="s-sla" placeholder="e.g. 24h" /></td>
+        <td><input type="text" class="s-cal" placeholder="calendar" /></td>
+        <td><input type="text" class="s-note" /></td>
+        <td><button type="button" class="row-del">✕</button></td>`;
+      tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+      return tr;
+    }
+  );
+
+  /* ——— collect / apply state ——— */
+  function getFormData() {
+    const data = { schemaVersion: 1, completedAt: new Date().toISOString() };
+    const fd = new FormData(form);
+    for (const [k, v] of fd.entries()) {
+      if (k && k.includes("context")) continue;
+      if (data[k] !== undefined) {
+        if (!Array.isArray(data[k])) data[k] = [data[k]];
+        data[k].push(v);
+      } else data[k] = v;
+    }
+    // checkboxes: explicit false when unchecked
+    ["role_ca", "role_ta", "role_hr", "role_ld", "role_comp", "mod_employees", "mod_leave", "mod_compliance", "mod_recruit", "mod_pl", "mod_pay"].forEach((name) => {
+      const el = form.querySelector(`[name="${name}"]`);
+      if (el) data[name] = el.checked;
+    });
+    // repeater: completeness
+    const compRows = [];
+    compContainer.querySelectorAll("tbody tr").forEach((tr) => {
+      compRows.push({
+        entity: tr.querySelector(".c-entity")?.value || "",
+        required: tr.querySelector(".c-req")?.value || "",
+        optional: tr.querySelector(".c-opt")?.value || "",
+        notes: tr.querySelector(".c-note")?.value || "",
+      });
+    });
+    data.completeness_table = compRows;
+    // accuracy
+    const acc = [];
+    document.querySelectorAll("#accuracy-rows tbody tr").forEach((tr) => {
+      acc.push({
+        name: tr.querySelector(".a-name")?.value || "",
+        condition: tr.querySelector(".a-cond")?.value || "",
+        pass: tr.querySelector(".a-pass")?.value || "",
+        fail: tr.querySelector(".a-fail")?.value || "",
+        applies: tr.querySelector(".a-apply")?.value || "",
+      });
+    });
+    data.accuracy_rules = acc;
+    // gaps
+    const gaps = [];
+    document.querySelectorAll("#gap-rows tbody tr").forEach((tr) => {
+      gaps.push({ gap: tr.querySelector(".g-gap")?.value, add: tr.querySelector(".g-add")?.value, priority: tr.querySelector(".g-pri")?.value });
+    });
+    data.data_gaps = gaps;
+    // process
+    const pro = [];
+    document.querySelectorAll("#process-rows tbody tr").forEach((tr) => {
+      pro.push({
+        process: tr.querySelector(".p-name")?.value,
+        states: tr.querySelector(".p-states")?.value,
+        allowed: tr.querySelector(".p-allow")?.value,
+        forbidden: tr.querySelector(".p-forbid")?.value,
+        detection: tr.querySelector(".p-detect")?.value,
+      });
+    });
+    data.process_workflows = pro;
+    // critical
+    const cr = [];
+    document.querySelectorAll("#crit-rows tbody tr").forEach((tr) => {
+      cr.push({ event: tr.querySelector(".k-ev")?.value, why: tr.querySelector(".k-why")?.value, outcome: tr.querySelector(".k-out")?.value });
+    });
+    data.critical_failures = cr;
+    // sla
+    const slas = [];
+    document.querySelectorAll("#sla-rows tbody tr").forEach((tr) => {
+      slas.push({
+        module: tr.querySelector(".s-mod")?.value,
+        action: tr.querySelector(".s-act")?.value,
+        start: tr.querySelector(".s-start")?.value,
+        end: tr.querySelector(".s-end")?.value,
+        sla: tr.querySelector(".s-sla")?.value,
+        calendar: tr.querySelector(".s-cal")?.value,
+        notes: tr.querySelector(".s-note")?.value,
+      });
+    });
+    data.sla_table = slas;
+    return data;
+  }
+
+  function applyData(obj) {
+    if (!obj || typeof obj !== "object") return;
+    const skip = new Set([
+      "completeness_table", "accuracy_rules", "data_gaps", "process_workflows", "critical_failures", "sla_table",
+      "schemaVersion", "completedAt",
+    ]);
+    Object.keys(obj).forEach((k) => {
+      if (skip.has(k)) return;
+      const first = form.querySelector(`[name="${k}"]`);
+      if (!first) return;
+      if (first.type === "checkbox") {
+        const el = form.querySelector(`[name="${k}"]`);
+        if (el) el.checked = !!obj[k];
+        return;
+      }
+      if (first.type === "radio") {
+        const val = obj[k] == null ? "" : String(obj[k]);
+        form.querySelectorAll(`[name="${k}"]`).forEach((r) => {
+          r.checked = r.value === val;
+        });
+        return;
+      }
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(first.tagName)) {
+        first.value = obj[k] == null ? "" : String(obj[k]);
+      }
+    });
+    if (Array.isArray(obj.completeness_table) && obj.completeness_table.length) {
+      compContainer.innerHTML = "";
+      const table = document.createElement("table");
+      table.innerHTML = "<thead><tr><th>Entity / workflow</th><th>Required fields</th><th>Optional</th><th>Notes</th><th></th></tr></thead><tbody></tbody>";
+      compContainer.appendChild(table);
+      const tb = table.querySelector("tbody");
+      obj.completeness_table.forEach((row) => {
+        const tr = completenessTemplate();
+        tr.querySelector(".c-entity").value = row.entity || "";
+        tr.querySelector(".c-req").value = row.required || "";
+        tr.querySelector(".c-opt").value = row.optional || "";
+        tr.querySelector(".c-note").value = row.notes || "";
+        tb.appendChild(tr);
+      });
+      compRefresh();
+    }
+    if (Array.isArray(obj.accuracy_rules) && obj.accuracy_rules.length) {
+      const c = document.getElementById("accuracy-rows");
+      c.innerHTML = "<table><thead><tr><th>Rule name</th><th>Condition</th><th>Pass</th><th>Fail / partial</th><th>Applies to</th><th></th></tr></thead><tbody></tbody></table>";
+      const tb = c.querySelector("tbody");
+      obj.accuracy_rules.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><input type="text" class="a-name" value="${esc(r.name)}" /></td>
+        <td><input type="text" class="a-cond" value="${esc(r.condition)}" /></td>
+        <td><input type="text" class="a-pass" value="${esc(r.pass)}" /></td>
+        <td><input type="text" class="a-fail" value="${esc(r.fail)}" /></td>
+        <td><input type="text" class="a-apply" value="${esc(r.applies)}" /></td>
+        <td><button type="button" class="row-del">✕</button></td>`;
+        tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+        tb.appendChild(tr);
+      });
+    }
+    if (Array.isArray(obj.data_gaps) && obj.data_gaps.length) {
+      const c = document.getElementById("gap-rows");
+      c.innerHTML = "<table><thead><tr><th>Gap</th><th>What to add</th><th>Priority</th><th></th></tr></thead><tbody></tbody></table>";
+      const tb = c.querySelector("tbody");
+      obj.data_gaps.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><input class="g-gap" value="${esc(r.gap)}" /></td><td><input class="g-add" value="${esc(r.add)}" /></td><td><input class="g-pri" value="${esc(r.priority)}" /></td><td><button type="button" class="row-del">✕</button></td>`;
+        tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+        tb.appendChild(tr);
+      });
+    }
+    if (Array.isArray(obj.process_workflows) && obj.process_workflows.length) {
+      const c = document.getElementById("process-rows");
+      c.innerHTML = "<table><thead><tr><th>Process</th><th>States</th><th>Allowed</th><th>Forbidden</th><th>Detection</th><th></th></tr></thead><tbody></tbody></table>";
+      const tb = c.querySelector("tbody");
+      obj.process_workflows.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><input class="p-name" value="${esc(r.process)}" /></td>
+        <td><input class="p-states" value="${esc(r.states)}" /></td>
+        <td><input class="p-allow" value="${esc(r.allowed)}" /></td>
+        <td><input class="p-forbid" value="${esc(r.forbidden)}" /></td>
+        <td><input class="p-detect" value="${esc(r.detection)}" /></td>
+        <td><button type="button" class="row-del">✕</button></td>`;
+        tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+        tb.appendChild(tr);
+      });
+    }
+    if (Array.isArray(obj.critical_failures) && obj.critical_failures.length) {
+      const c = document.getElementById("crit-rows");
+      c.innerHTML = "<table><thead><tr><th>Event</th><th>Why</th><th>Outcome</th><th></th></tr></thead><tbody></tbody></table>";
+      const tb = c.querySelector("tbody");
+      obj.critical_failures.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><input class="k-ev" value="${esc(r.event)}" /></td><td><input class="k-why" value="${esc(r.why)}" /></td><td><input class="k-out" value="${esc(r.outcome)}" /></td><td><button type="button" class="row-del">✕</button></td>`;
+        tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+        tb.appendChild(tr);
+      });
+    }
+    if (Array.isArray(obj.sla_table) && obj.sla_table.length) {
+      const c = document.getElementById("sla-rows");
+      c.innerHTML = "<table><thead><tr><th>Module</th><th>Action</th><th>Start</th><th>End</th><th>SLA</th><th>Cal</th><th>Notes</th><th></th></tr></thead><tbody></tbody></table>";
+      const tb = c.querySelector("tbody");
+      obj.sla_table.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><input class="s-mod" value="${esc(r.module)}" /></td>
+        <td><input class="s-act" value="${esc(r.action)}" /></td>
+        <td><input class="s-start" value="${esc(r.start)}" /></td>
+        <td><input class="s-end" value="${esc(r.end)}" /></td>
+        <td><input class="s-sla" value="${esc(r.sla)}" /></td>
+        <td><input class="s-cal" value="${esc(r.calendar)}" /></td>
+        <td><input class="s-note" value="${esc(r.notes)}" /></td>
+        <td><button type="button" class="row-del">✕</button></td>`;
+        tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+        tb.appendChild(tr);
+      });
+    }
+    updateWeightSum();
+  }
+
+  function esc(s) {
+    if (s == null) return "";
+    return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  }
+
+  function saveLocal() {
+    const data = getFormData();
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(data));
+      setStatus("Saved to browser " + new Date().toLocaleTimeString(), 3500);
+    } catch (e) {
+      setStatus("Save failed: " + e.message, 5000);
+    }
+  }
+
+  function loadLocal() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) { setStatus("No saved data", 3000); return; }
+      applyData(JSON.parse(raw));
+      setStatus("Loaded from browser", 3000);
+    } catch (e) {
+      setStatus("Load failed: " + e.message, 5000);
+    }
+  }
+
+  function exportJson() {
+    const data = getFormData();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "hworkr-scoring-spec.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    setStatus("JSON downloaded", 2500);
+  }
+
+  async function copyJson() {
+    const data = getFormData();
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      setStatus("Copied to clipboard", 2500);
+    } catch (e) {
+      setStatus("Copy failed: " + e.message, 4000);
+    }
+  }
+
+  function clearAll() {
+    if (!confirm("Clear all fields and local save?")) return;
+    form.reset();
+    compContainer.innerHTML = "";
+    document.getElementById("completeness-empty").hidden = false;
+    ["accuracy-rows", "gap-rows", "process-rows", "crit-rows", "sla-rows"].forEach((id) => { document.getElementById(id).innerHTML = ""; });
+    try { localStorage.removeItem(LS_KEY); } catch (_) {}
+    setStatus("Cleared", 2500);
+    updateWeightSum();
+  }
+
+  let saveDebounceT;
+  function debouncedSave() {
+    clearTimeout(saveDebounceT);
+    saveDebounceT = setTimeout(() => { try { saveLocal(); } catch (_) {} }, 500);
+  }
+
+  document.getElementById("btn-save").addEventListener("click", saveLocal);
+  document.getElementById("btn-load").addEventListener("click", loadLocal);
+  document.getElementById("btn-export").addEventListener("click", exportJson);
+  document.getElementById("btn-copy").addEventListener("click", copyJson);
+  document.getElementById("btn-clear").addEventListener("click", clearAll);
+
+  form.addEventListener("input", debouncedSave, { passive: true });
+  form.addEventListener("change", debouncedSave);
+  document.getElementById("add-completeness").addEventListener("click", debouncedSave);
+  document.getElementById("add-accuracy").addEventListener("click", () => setTimeout(debouncedSave, 0));
+  document.getElementById("add-gap").addEventListener("click", () => setTimeout(debouncedSave, 0));
+  document.getElementById("add-process").addEventListener("click", () => setTimeout(debouncedSave, 0));
+  document.getElementById("add-crit").addEventListener("click", () => setTimeout(debouncedSave, 0));
+  document.getElementById("add-sla").addEventListener("click", () => setTimeout(debouncedSave, 0));
+
+  if (localStorage.getItem(LS_KEY)) {
+    try { applyData(JSON.parse(localStorage.getItem(LS_KEY))); } catch (_) {}
+  }
+  updateWeightSum();
+})();
+  </script>
+</body>
+</html>

@@ -11,6 +11,7 @@ from app.models.base import uuid_str
 from app.models.company_registration_request import CompanyRegistrationRequest
 from app.models.user import User
 from app.schemas.company_registration import CompanyRegistrationRequestOut
+from app.services.audit import write_audit
 from app.services.logo_upload import save_company_logo
 
 router = APIRouter(prefix="/company-registration-requests", tags=["company-registration"])
@@ -66,6 +67,15 @@ async def submit_company_registration(
         status="pending",
     )
     db.add(req)
+    write_audit(
+        db,
+        company_id=None,
+        user_id=user.id,
+        entity_type="company_registration_request",
+        entity_id=req.id,
+        action="submit",
+        changes_json={"company_name": req.company_name},
+    )
     db.commit()
     db.refresh(req)
     ur = db.execute(select(User).where(User.id == user.id))

@@ -3,11 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.tracking import ScoringRule
-from app.services.activity_log import log_activity
+from app.scoring_rules import (
+    DEFAULT_QUALITY_FACTORS,
+    SLA_NO_REFERENCE_TIMELINESS,
+    SLA_SECONDS_BY_ACTION,
+)
+from app.services.activity_log import coerce_utc, log_activity
 
 
 def log_tracked_hr_action(
@@ -28,32 +31,20 @@ def log_tracked_hr_action(
     session_id: str | None = None,
 ) -> Any:
     """
-    Merge scoring rule SLA into timeliness; persist ActivityLog (caller commits).
+    Apply configured defaults/SLA, then persist ActivityLog (caller commits).
     """
-    rule = db.execute(
-        select(ScoringRule).where(
-            ScoringRule.company_id == company_id,
-            ScoringRule.module == module,
-            ScoringRule.action_type == action_type,
-        )
-    ).scalar_one_or_none()
-
-    factors: dict[str, Any] = {
-        "completeness": 85.0,
-        "accuracy": 85.0,
-        "timeliness": 90.0,
-        "process_adherence": 85.0,
-    }
+    factors: dict[str, Any] = dict(DEFAULT_QUALITY_FACTORS)
     if quality_factors:
         factors.update({k: float(v) for k, v in quality_factors.items() if v is not None})
 
+    sla_seconds = (SLA_SECONDS_BY_ACTION.get(module, {}) or {}).get(action_type)
     now = datetime.now(timezone.utc)
-    if rule and rule.sla_seconds and reference_started_at is not None:
-        elapsed = max(0.0, (now - reference_started_at).total_seconds())
-        ratio = min(1.0, elapsed / float(rule.sla_seconds))
+    if sla_seconds and reference_started_at is not None:
+        elapsed = max(0.0, (now - coerce_utc(reference_started_at)).total_seconds())
+        ratio = min(1.0, elapsed / float(sla_seconds))
         factors["timeliness"] = max(0.0, 100.0 - ratio * 100.0)
-    elif rule and rule.sla_seconds:
-        factors["timeliness"] = 95.0
+    elif sla_seconds:
+        factors["timeliness"] = SLA_NO_REFERENCE_TIMELINESS
 
     ctx: dict[str, Any] = dict(extra_context or {})
     if critical_failure:

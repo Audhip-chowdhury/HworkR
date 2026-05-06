@@ -10,14 +10,24 @@ from app.database import get_db
 from app.models.base import uuid_str
 from app.models.certification import CertProgress, Certificate, CertTrack
 from app.models.membership import CompanyMembership
+from app.models.tracking import ActivityLog
 from app.models.user import User
+from app.scoring_rules import (
+    PROGRESS_ELIGIBLE_MIN_SCORE,
+    PROGRESS_MODULES,
+    PROGRESS_REQUIRED_ACTIONS,
+)
 from app.schemas.certification import (
+    CertificationProgressDashboardOut,
     CertificateIssueRequest,
     CertificateOut,
     CertProgressOut,
     CertProgressUpsert,
     CertTrackCreate,
     CertTrackOut,
+    ProgressDimensionOut,
+    ProgressModuleOut,
+    ProgressRecentActionOut,
 )
 from app.services.activity_tracking import log_tracked_hr_action
 from app.services.audit import write_audit
@@ -125,6 +135,117 @@ def upsert_my_cert_progress(
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.get("/progress/me/dashboard", response_model=CertificationProgressDashboardOut)
+def get_my_progress_dashboard(
+    company_id: str,
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
+    db: Annotated[Session, Depends(get_db)],
+    recent_limit: int = 15,
+) -> CertificationProgressDashboardOut:
+    user, _ = ctx
+    logs = db.execute(
+        select(ActivityLog)
+        .where(
+            ActivityLog.company_id == company_id,
+            ActivityLog.user_id == user.id,
+            ActivityLog.module.in_(tuple(PROGRESS_MODULES.keys())),
+        )
+        .order_by(ActivityLog.created_at.desc())
+        .limit(5000)
+    ).scalars().all()
+
+    scores = [float(x.quality_score) for x in logs if x.quality_score is not None]
+
+    def _avg(vals: list[float]) -> float | None:
+        return round(sum(vals) / len(vals), 2) if vals else None
+
+    dim_vals: dict[str, list[float]] = {
+        "completeness": [],
+        "accuracy": [],
+        "timeliness": [],
+        "process_adherence": [],
+    }
+    for row in logs:
+        qf = row.quality_factors_json
+        if not isinstance(qf, dict):
+            continue
+        for k in dim_vals:
+            v = qf.get(k)
+            if isinstance(v, (int, float)):
+                dim_vals[k].append(float(v))
+
+    by_module: dict[str, list[ActivityLog]] = {m: [] for m in PROGRESS_MODULES}
+    for row in logs:
+        if row.module in by_module:
+            by_module[row.module].append(row)
+
+    module_breakdown: list[ProgressModuleOut] = []
+    for mod, label in PROGRESS_MODULES.items():
+        mod_logs = by_module.get(mod, [])
+        mod_scores = [float(x.quality_score) for x in mod_logs if x.quality_score is not None]
+        module_breakdown.append(
+            ProgressModuleOut(
+                module=mod,
+                label=label,
+                action_count=len(mod_logs),
+                avg_score=_avg(mod_scores),
+            )
+        )
+
+    seen_actions = {f"{x.module}:{x.action_type}" for x in logs}
+    completed_required = sum(1 for a in PROGRESS_REQUIRED_ACTIONS if a in seen_actions)
+    missing_required = [a for a in PROGRESS_REQUIRED_ACTIONS if a not in seen_actions]
+    critical_failure_count = sum(
+        1
+        for x in logs
+        if isinstance(x.context_json, dict) and bool(x.context_json.get("critical_failure"))
+    )
+
+    overall = _avg(scores)
+    if not logs:
+        status = "not_started"
+    elif critical_failure_count > 0:
+        status = "failed"
+    elif (
+        completed_required == len(PROGRESS_REQUIRED_ACTIONS)
+        and overall is not None
+        and overall >= PROGRESS_ELIGIBLE_MIN_SCORE
+    ):
+        status = "eligible_for_assessment"
+    else:
+        status = "in_progress"
+
+    recent_actions = [
+        ProgressRecentActionOut(
+            id=x.id,
+            occurred_at=x.created_at,
+            module=x.module,
+            action_type=x.action_type,
+            action_detail=x.action_detail,
+            score=float(x.quality_score) if x.quality_score is not None else None,
+        )
+        for x in logs[: max(1, min(recent_limit, 50))]
+    ]
+
+    return CertificationProgressDashboardOut(
+        overall_score=overall,
+        action_count=len(logs),
+        dimension_averages=ProgressDimensionOut(
+            completeness=_avg(dim_vals["completeness"]),
+            accuracy=_avg(dim_vals["accuracy"]),
+            timeliness=_avg(dim_vals["timeliness"]),
+            process_adherence=_avg(dim_vals["process_adherence"]),
+        ),
+        module_breakdown=module_breakdown,
+        required_actions_total=len(PROGRESS_REQUIRED_ACTIONS),
+        required_actions_completed=completed_required,
+        missing_required_actions=missing_required,
+        critical_failure_count=critical_failure_count,
+        status=status,
+        recent_actions=recent_actions,
+    )
 
 
 @router.post("/certificates/issue", response_model=CertificateOut, status_code=status.HTTP_201_CREATED)

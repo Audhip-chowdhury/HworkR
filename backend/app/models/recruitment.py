@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 class Requisition(Base):
     __tablename__ = "requisitions"
+    __table_args__ = (UniqueConstraint("req_code", name="uq_requisitions_req_code"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     company_id: Mapped[str] = mapped_column(
@@ -20,6 +21,7 @@ class Requisition(Base):
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     department_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("departments.id"), nullable=True)
     job_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("job_catalog.id"), nullable=True)
+    req_code: Mapped[str | None] = mapped_column(String(6), nullable=True, index=True)
     headcount: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
     hiring_criteria_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -32,6 +34,7 @@ class Requisition(Base):
 
 class JobPosting(Base):
     __tablename__ = "job_postings"
+    __table_args__ = (UniqueConstraint("requisition_id", name="uq_job_postings_requisition_id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     requisition_id: Mapped[str] = mapped_column(
@@ -45,6 +48,8 @@ class JobPosting(Base):
     requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
     deadline: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)
+    posted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    posting_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

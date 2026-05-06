@@ -16,6 +16,7 @@ from app.schemas.webhook import (
     WebhookSubscriptionUpdate,
     WebhookTestRequest,
 )
+from app.services.audit import write_audit
 from app.services.webhooks import build_envelope, deliver_to_subscription
 
 router = APIRouter(prefix="/companies/{company_id}/webhooks", tags=["webhooks"])
@@ -42,7 +43,7 @@ def create_subscription(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path({"company_admin"}))],
     db: Annotated[Session, Depends(get_db)],
 ) -> WebhookSubscription:
-    _, _m = ctx
+    user, _m = ctx
     events = body.events if body.events else None
     row = WebhookSubscription(
         id=uuid_str(),
@@ -53,6 +54,15 @@ def create_subscription(
         is_active=body.is_active,
     )
     db.add(row)
+    write_audit(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        entity_type="webhook_subscription",
+        entity_id=row.id,
+        action="create",
+        changes_json={"url": row.url, "is_active": row.is_active},
+    )
     db.commit()
     db.refresh(row)
     return row
@@ -66,7 +76,7 @@ def update_subscription(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path({"company_admin"}))],
     db: Annotated[Session, Depends(get_db)],
 ) -> WebhookSubscription:
-    _, _m = ctx
+    user, _m = ctx
     r = db.execute(
         select(WebhookSubscription).where(
             WebhookSubscription.id == subscription_id,
@@ -86,6 +96,15 @@ def update_subscription(
         del data["url"]
     for k, v in data.items():
         setattr(row, k, v)
+    write_audit(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        entity_type="webhook_subscription",
+        entity_id=row.id,
+        action="update",
+        changes_json=body.model_dump(exclude_unset=True, by_alias=True),
+    )
     db.commit()
     db.refresh(row)
     return row
@@ -117,6 +136,15 @@ def test_subscription(
         entity_id=subscription_id,
         actor_user_id=user.id,
         data=body.data,
+    )
+    write_audit(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        entity_type="webhook_subscription",
+        entity_id=subscription_id,
+        action="test",
+        changes_json={"event_type": body.event_type},
     )
     db.commit()
     deliver_to_subscription(subscription_id, body.event_type, env)

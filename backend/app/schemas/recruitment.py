@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 ApplicationStage = Literal[
@@ -16,11 +16,21 @@ ApplicationStage = Literal[
 ]
 
 
+class HiringCriteria(BaseModel):
+    """Structured hiring criteria stored in `requisitions.hiring_criteria_json`."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    skills: list[str] = Field(default_factory=list)
+    experience: str | None = Field(default=None, max_length=2000)
+    education: str | None = Field(default=None, max_length=2000)
+
+
 class RequisitionCreate(BaseModel):
     department_id: str | None = None
     job_id: str | None = None
     headcount: int = Field(default=1, ge=1, le=1000)
-    hiring_criteria_json: dict[str, Any] | None = None
+    hiring_criteria: HiringCriteria | None = None
     approval_chain_json: dict[str, Any] | None = None
 
 
@@ -30,14 +40,13 @@ class RequisitionOut(BaseModel):
     created_by: str
     department_id: str | None
     job_id: str | None
+    req_code: str | None = None
     headcount: int
     status: str
-    hiring_criteria_json: dict[str, Any] | None
+    hiring_criteria: HiringCriteria | None = None
     approval_chain_json: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class RequisitionUpdate(BaseModel):
@@ -45,7 +54,7 @@ class RequisitionUpdate(BaseModel):
     job_id: str | None = None
     headcount: int | None = Field(default=None, ge=1, le=1000)
     status: str | None = Field(default=None, min_length=1, max_length=32)
-    hiring_criteria_json: dict[str, Any] | None = None
+    hiring_criteria: HiringCriteria | None = None
     approval_chain_json: dict[str, Any] | None = None
 
 
@@ -66,6 +75,8 @@ class JobPostingOut(BaseModel):
     requirements: str | None
     deadline: str | None
     status: str
+    posted: bool = False
+    posting_ref: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -78,6 +89,8 @@ class JobPostingUpdate(BaseModel):
     requirements: str | None = None
     deadline: str | None = None
     status: str | None = Field(default=None, min_length=1, max_length=32)
+    posted: bool | None = None
+    posting_ref: str | None = Field(default=None, max_length=128)
 
 
 class ApplicationCreate(BaseModel):
@@ -107,14 +120,65 @@ class ApplicationOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PublicApplyByReqCodeRequest(BaseModel):
+    """Candidate account + application in one step. `req_code` is globally unique (URL path)."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, description="New account password, or existing user's password")
+    name: str = Field(min_length=1, max_length=255)
+    resume_url: str | None = Field(default=None, max_length=1024)
+
+
+class PublicApplyByReqCodeResponse(BaseModel):
+    application: ApplicationOut
+    access_token: str
+    token_type: str = "bearer"
+
+
 class ApplicationWithPostingOut(ApplicationOut):
     posting_title: str | None = None
+    candidate_name: str | None = None
+    job_grade: str | None = None
 
 
-class JobPostingPublicOut(JobPostingOut):
-    """Same as JobPostingOut; used for candidate-facing open board."""
+class ApplicationActivityOut(BaseModel):
+    """One audit row for candidate / application pipeline activity."""
 
-    pass
+    id: str
+    timestamp: datetime
+    application_id: str
+    posting_id: str
+    posting_title: str | None = None
+    candidate_user_id: str
+    candidate_name: str | None = None
+    actor_user_id: str | None = None
+    actor_name: str | None = None
+    action: str
+    previous_stage: str | None = None
+    previous_status: str | None = None
+    stage: str | None = None
+    status: str | None = None
+    via: str | None = Field(
+        default=None,
+        description="When set: offer_created (offer sent) or offer_response (candidate responded).",
+    )
+
+
+class JobPostingPublicOut(BaseModel):
+    """Candidate-facing job board (no internal tracking fields)."""
+
+    id: str
+    requisition_id: str
+    company_id: str
+    title: str
+    description: str | None
+    requirements: str | None
+    deadline: str | None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InterviewCreate(BaseModel):
@@ -146,6 +210,13 @@ class InterviewOut(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class InterviewCalendarItemOut(InterviewOut):
+    """Scheduled interviews for calendar view (excludes cancelled / removed rows)."""
+
+    posting_title: str | None = None
+    candidate_name: str | None = None
 
 
 class OfferCreate(BaseModel):
