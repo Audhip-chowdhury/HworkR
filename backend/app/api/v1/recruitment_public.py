@@ -101,6 +101,7 @@ def public_apply_by_req_code(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This email is already a staff member for this company; use your HR account instead",
         )
+    created_membership = False
     if membership is None:
         db.add(
             CompanyMembership(
@@ -113,6 +114,7 @@ def public_apply_by_req_code(
             )
         )
         db.flush()
+        created_membership = True
 
     dup = db.execute(
         select(Application.id).where(
@@ -157,6 +159,11 @@ def public_apply_by_req_code(
     )
     db.commit()
     db.refresh(app_row)
+    if created_membership:
+        from app.services.cohort_assignment import enroll_member_in_cohort  # noqa: PLC0415
+
+        enroll_member_in_cohort(db, company_id, user.id, "employee")
+        db.commit()
     post_application_pipeline_status(candidate_user_id=user.id, status="applied", job_posting_code=code)
     publish_domain_event_post_commit(
         company_id=company_id,

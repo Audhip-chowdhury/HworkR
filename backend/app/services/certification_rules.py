@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from collections import Counter
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -8,7 +8,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.certification import CertProgress, CertTrack
+from app.models.membership import CompanyMembership
 from app.models.tracking import ActivityLog
+from app.scoring_rules import (
+    CERT_DEFAULT_MIN_SCORE,
+    CERT_DEFAULT_MIN_TASKS_PER_MODULE,
+    CERT_MIN_SCORE_BY_ROLE,
+    CERT_MIN_TASKS_PER_MODULE_BY_ROLE,
+    PROGRESS_MODULES,
+)
 
 
 def _req(req_json: dict[str, Any] | None) -> dict[str, Any]:
@@ -25,19 +33,52 @@ def validate_certificate_issuance(
     issuer_is_company_admin: bool,
 ) -> None:
     """
-    Enforce requirements_json on CertTrack:
-    - min_actions_count: int
-    - required_action_keys: list[str] — keys in completed_actions_json that must be truthy / >0
-    - max_days: number — from CertProgress.started_at
-    - disallow_critical_failures: bool — any activity log with context critical_failure
+    Enforce requirements_json on CertTrack (and role-based defaults):
+    - min_tasks_per_module: dict module -> min count (ActivityLog rows)
+    - min_actions_count / required_action_keys: legacy CertProgress.completed_actions_json
+    - disallow_critical_failures: any activity log with context critical_failure
+    - min_score on track (and role default floor for non-admin)
     """
     if issuer_is_company_admin:
         return
 
+    membership = db.execute(
+        select(CompanyMembership).where(
+            CompanyMembership.company_id == company_id,
+            CompanyMembership.user_id == target_user_id,
+            CompanyMembership.status == "active",
+        )
+    ).scalar_one_or_none()
+    role = membership.role if membership else "employee"
+
     req = _req(track.requirements_json if isinstance(track.requirements_json, dict) else None)
+    min_tasks = CERT_MIN_TASKS_PER_MODULE_BY_ROLE.get(role, CERT_DEFAULT_MIN_TASKS_PER_MODULE)
+    if isinstance(req.get("min_tasks_per_module"), dict):
+        min_tasks = {str(k): int(v) for k, v in req["min_tasks_per_module"].items() if int(v) > 0}
+
+    logs = db.execute(
+        select(ActivityLog).where(
+            ActivityLog.company_id == company_id,
+            ActivityLog.user_id == target_user_id,
+        )
+    ).scalars().all()
+    by_mod = Counter(x.module for x in logs if x.module in PROGRESS_MODULES)
+    for mod, need in min_tasks.items():
+        if by_mod.get(mod, 0) < int(need):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Module '{mod}' requires at least {need} scored tasks (have {by_mod.get(mod, 0)})",
+            )
+
+    role_min = CERT_MIN_SCORE_BY_ROLE.get(role, CERT_DEFAULT_MIN_SCORE)
+    effective_min = max(float(role_min), float(track.min_score))
+    if proposed_score < effective_min:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Minimum score for this track is {effective_min:.1f}",
+        )
+
     min_actions = int(req.get("min_actions_count") or 0)
-    max_days = req.get("max_days")
-    disallow_crit = req.get("disallow_critical_failures") is True
     required_keys = req.get("required_action_keys") or []
 
     prog = db.execute(
@@ -71,44 +112,11 @@ def validate_certificate_issuance(
                 detail=f"Missing required completed action: {key}",
             )
 
-    md = 0.0
-    if max_days is not None:
-        try:
-            md = float(max_days)
-        except (TypeError, ValueError):
-            md = 0.0
-
-    if md > 0 and prog is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Certification progress record required for time-windowed tracks",
-        )
-
-    if md > 0 and prog and prog.started_at:
-        elapsed_days = (datetime.now(timezone.utc) - prog.started_at).total_seconds() / 86400.0
-        if elapsed_days > md:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Certification time window exceeded ({md} days)",
-            )
-
-    if disallow_crit:
-        crit = db.execute(
-            select(ActivityLog).where(
-                ActivityLog.company_id == company_id,
-                ActivityLog.user_id == target_user_id,
-            )
-        ).scalars().all()
-        for log in crit:
+    if req.get("disallow_critical_failures", True):
+        for log in logs:
             ctx = log.context_json
             if isinstance(ctx, dict) and ctx.get("critical_failure"):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Certification blocked due to critical failure on record",
                 )
-
-    if proposed_score < track.min_score:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Minimum score for this track is {track.min_score}",
-        )

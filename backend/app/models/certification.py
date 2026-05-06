@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func, text
 from sqlalchemy import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -59,3 +59,9 @@ class Certificate(Base):
     breakdown_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     verification_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    approval_status: Mapped[str] = mapped_column(
+        String(32),
+        default="pending_approval",
+        server_default=text("'pending_approval'"),
+        nullable=False,
+    )  # pending_approval | approved

@@ -136,6 +136,10 @@ def approve_registration(
     )
     db.commit()
     db.refresh(company)
+    from app.services.cohort_assignment import enroll_member_in_cohort  # noqa: PLC0415
+
+    enroll_member_in_cohort(db, company.id, req.requester_user_id, "company_admin")
+    db.commit()
     return company
 
 
