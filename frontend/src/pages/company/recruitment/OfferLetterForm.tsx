@@ -13,6 +13,8 @@ export type OfferLetterFormValues = {
   jobTitle: string
   departmentId: string
   reportingManagerEmployeeId: string
+  /** Company org location (work site), optional */
+  workLocationId: string
   employmentType: EmploymentType
   workMode: WorkMode
   annualCtc: string
@@ -40,6 +42,7 @@ export const defaultOfferLetterValues = (letterDate: string): OfferLetterFormVal
   jobTitle: '',
   departmentId: '',
   reportingManagerEmployeeId: '',
+  workLocationId: '',
   employmentType: 'full_time',
   workMode: 'hybrid',
   annualCtc: '',
@@ -68,6 +71,7 @@ type Props = {
   values: OfferLetterFormValues
   onChange: (patch: Partial<OfferLetterFormValues>) => void
   departments: Dept[]
+  locations: Dept[]
   managers: EmployeeSummary[]
   /** Shown under fields when pre-filled from application/org data */
   hints: Partial<Record<keyof OfferLetterFormValues, string>>
@@ -99,7 +103,7 @@ function Field({
   )
 }
 
-export function OfferLetterForm({ values, onChange, departments, managers, hints, companyLogoUrl }: Props) {
+export function OfferLetterForm({ values, onChange, departments, locations, managers, hints, companyLogoUrl }: Props) {
   const set = onChange
 
   return (
@@ -193,6 +197,20 @@ export function OfferLetterForm({ values, onChange, departments, managers, hints
               <option value="onsite">Onsite</option>
               <option value="remote">Remote</option>
               <option value="hybrid">Hybrid</option>
+            </select>
+          </Field>
+          <Field label="Work site (org location)" hint={hints.workLocationId}>
+            <select
+              className={styles.select}
+              value={values.workLocationId}
+              onChange={(e) => set({ workLocationId: e.target.value })}
+            >
+              <option value="">— Optional: primary office / site —</option>
+              {locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}
+                </option>
+              ))}
             </select>
           </Field>
         </div>

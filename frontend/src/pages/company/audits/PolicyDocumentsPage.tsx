@@ -7,14 +7,36 @@ import {
   getPolicyAcknowledgmentDetail,
   listPolicies,
   type PolicyAckMember,
+  type PolicyAckStatusFilter,
   type PolicyDocumentRow,
 } from '../../../api/auditsApi'
 import { invalidateInboxBadge } from '../../../api/inboxApi'
-import { canListAllActivityLogs } from '../../../company/navConfig'
+import { canListAllActivityLogs } from '../../../company/companyAccess'
 import styles from '../CompanyWorkspacePage.module.css'
 import auditStyles from './Audits.module.css'
 
 const ACK_PAGE_SIZE = 50
+
+function ackSearchQuery(raw: string): string {
+  const t = raw.trim()
+  return t.length >= 4 ? t : ''
+}
+
+function escapeCsvCell(value: string): string {
+  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`
+  return value
+}
+
+function buildAckExportCsv(rows: PolicyAckMember[]): string {
+  const header = ['Emp ID', 'Emp Name', 'Emp Email', 'Status']
+  const lines = [
+    header.map(escapeCsvCell).join(','),
+    ...rows.map((r) =>
+      [r.user_id, r.name, r.email, r.acknowledged ? 'Ack' : 'Not ack'].map(escapeCsvCell).join(','),
+    ),
+  ]
+  return `\ufeff${lines.join('\n')}`
+}
 
 export function PolicyDocumentsPage() {
   const { companyId = '' } = useParams()
@@ -36,11 +58,13 @@ export function PolicyDocumentsPage() {
   const [detailPolicyId, setDetailPolicyId] = useState<string | null>(null)
   const [detailTitle, setDetailTitle] = useState('')
   const [detailSearch, setDetailSearch] = useState('')
+  const [detailStatus, setDetailStatus] = useState<PolicyAckStatusFilter>('all')
   const [detailRows, setDetailRows] = useState<PolicyAckMember[]>([])
   const [detailTotal, setDetailTotal] = useState(0)
   const [detailOffset, setDetailOffset] = useState(0)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [detailExporting, setDetailExporting] = useState(false)
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -66,20 +90,16 @@ export function PolicyDocumentsPage() {
   }, [focusPolicyId, rows])
 
   const loadAckPage = useCallback(
-    async (policyId: string, q: string, off: number) => {
-      if (!companyId || q.trim().length < 4) {
-        setDetailRows([])
-        setDetailTotal(0)
-        setDetailOffset(0)
-        return
-      }
+    async (policyId: string, searchRaw: string, off: number, status: PolicyAckStatusFilter) => {
+      if (!companyId) return
       setDetailLoading(true)
       setDetailError(null)
       try {
         const res = await getPolicyAcknowledgmentDetail(companyId, policyId, {
-          q: q.trim(),
+          q: ackSearchQuery(searchRaw),
           offset: off,
           limit: ACK_PAGE_SIZE,
+          status,
         })
         setDetailRows(res.items)
         setDetailTotal(res.total)
@@ -97,24 +117,19 @@ export function PolicyDocumentsPage() {
 
   useEffect(() => {
     if (!detailOpen || !detailPolicyId) return
-    const q = detailSearch.trim()
-    if (q.length < 4) {
-      setDetailRows([])
-      setDetailTotal(0)
-      setDetailOffset(0)
-      return
-    }
+    const delay = detailSearch.trim().length >= 4 ? 300 : 0
     const t = window.setTimeout(() => {
-      void loadAckPage(detailPolicyId, detailSearch, 0)
-    }, 300)
+      void loadAckPage(detailPolicyId, detailSearch, 0, detailStatus)
+    }, delay)
     return () => window.clearTimeout(t)
-  }, [detailSearch, detailOpen, detailPolicyId, loadAckPage])
+  }, [detailSearch, detailOpen, detailPolicyId, detailStatus, loadAckPage])
 
   function openAckDetail(p: PolicyDocumentRow) {
     if (p.acknowledgment_count == null || p.member_count == null) return
     setDetailTitle(p.title)
     setDetailPolicyId(p.id)
     setDetailSearch('')
+    setDetailStatus('all')
     setDetailRows([])
     setDetailTotal(0)
     setDetailOffset(0)
@@ -127,14 +142,51 @@ export function PolicyDocumentsPage() {
     setDetailPolicyId(null)
     setDetailTitle('')
     setDetailSearch('')
+    setDetailStatus('all')
     setDetailRows([])
     setDetailTotal(0)
     setDetailOffset(0)
     setDetailError(null)
   }
 
-  const canPrev = detailOffset > 0 && detailSearch.trim().length >= 4
-  const canNext = detailSearch.trim().length >= 4 && detailOffset + ACK_PAGE_SIZE < detailTotal
+  const canPrev = detailOffset > 0
+  const canNext = detailOffset + ACK_PAGE_SIZE < detailTotal
+
+  const exportAckSpreadsheet = useCallback(async () => {
+    if (!companyId || !detailPolicyId) return
+    setDetailExporting(true)
+    setDetailError(null)
+    try {
+      const qText = ackSearchQuery(detailSearch)
+      const limit = 200
+      const all: PolicyAckMember[] = []
+      let offset = 0
+      while (true) {
+        const res = await getPolicyAcknowledgmentDetail(companyId, detailPolicyId, {
+          q: qText,
+          offset,
+          limit,
+          status: detailStatus,
+        })
+        all.push(...res.items)
+        if (res.items.length < limit || all.length >= res.total) break
+        offset += limit
+      }
+      const csv = buildAckExportCsv(all)
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const safe = detailTitle.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-') || 'policy'
+      a.href = url
+      a.download = `${safe}-acknowledgments-${detailStatus}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setDetailExporting(false)
+    }
+  }, [companyId, detailPolicyId, detailSearch, detailStatus, detailTitle])
 
   async function onAck(p: PolicyDocumentRow) {
     if (!companyId || p.acknowledged_by_me) return
@@ -155,17 +207,19 @@ export function PolicyDocumentsPage() {
   const rangeStart = detailTotal === 0 ? 0 : detailOffset + 1
   const rangeEnd = detailOffset + detailRows.length
 
+  const publishHref = `/company/${companyId}/audits/policies?tab=publish`
+
   return (
     <div className={styles.org}>
       <section className={styles.card}>
-        <h3 className={styles.h3}>Policy documents</h3>
+        <h3 className={styles.h3}>Policy library</h3>
         <p className={styles.hint}>
           Download company policies and confirm you have read them. New policies appear in your inbox.
           {isHr ? (
             <>
               {' '}
               To add a new policy, use{' '}
-              <Link to={`/company/${companyId}/audits/policies/publish`}>Publish policy</Link>.
+              <Link to={publishHref}>Publish</Link>.
             </>
           ) : null}
         </p>
@@ -179,7 +233,7 @@ export function PolicyDocumentsPage() {
             {isHr ? (
               <>
                 {' '}
-                <Link to={`/company/${companyId}/audits/policies/publish`}>Publish the first policy</Link>.
+                <Link to={publishHref}>Publish the first policy</Link>.
               </>
             ) : null}
           </p>
@@ -260,52 +314,70 @@ export function PolicyDocumentsPage() {
               {detailTitle}
             </p>
 
-            <label className={auditStyles.ackSearchLabel}>
-              <span className={auditStyles.ackSearchHint}>Search by name, email, or user id</span>
-              <input
-                className={auditStyles.ackSearchInput}
-                type="search"
-                placeholder="Type at least 4 characters"
-                value={detailSearch}
-                onChange={(e) => setDetailSearch(e.target.value)}
-                autoComplete="off"
-                autoFocus
-              />
-            </label>
-            <p className={styles.muted} style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
-              Results load from the server in pages of {ACK_PAGE_SIZE} so large organizations stay fast.
+            <div className={auditStyles.ackToolbar}>
+              <label className={auditStyles.ackSearchLabel}>
+                <span className={auditStyles.ackSearchHint}>Search by name, email, or employee id</span>
+                <input
+                  className={auditStyles.ackSearchInput}
+                  type="search"
+                  placeholder="Optional — use 4+ characters to narrow the list"
+                  value={detailSearch}
+                  onChange={(e) => setDetailSearch(e.target.value)}
+                  autoComplete="off"
+                  autoFocus
+                />
+              </label>
+              <label className={auditStyles.ackStatusFilter}>
+                <span className={auditStyles.ackSearchHint}>Status</span>
+                <select
+                  className={auditStyles.ackStatusSelect}
+                  value={detailStatus}
+                  onChange={(e) => setDetailStatus(e.target.value as PolicyAckStatusFilter)}
+                >
+                  <option value="all">All</option>
+                  <option value="acknowledged">Ack</option>
+                  <option value="pending">Not ack</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                className={styles.btnSm}
+                disabled={detailExporting || detailLoading || !detailPolicyId}
+                onClick={() => void exportAckSpreadsheet()}
+              >
+                {detailExporting ? 'Exporting…' : 'Export to Excel'}
+              </button>
+            </div>
+            <p className={styles.muted} style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+              Table shows all active members for this company. Search (4+ characters) narrows rows; status filters who
+              has acknowledged. Export downloads the same filtered set as CSV (opens in Excel).
             </p>
-
-            {detailSearch.trim().length > 0 && detailSearch.trim().length < 4 ? (
-              <p className={styles.muted}>Enter at least 4 characters to search.</p>
-            ) : null}
 
             {detailLoading ? <p className={styles.muted}>Loading…</p> : null}
             {detailError ? <p className={styles.error}>{detailError}</p> : null}
 
-            {!detailLoading && detailSearch.trim().length >= 4 && !detailError ? (
+            {!detailLoading && !detailError ? (
               <>
                 <p className={auditStyles.ackTableMeta}>
                   {detailTotal === 0
-                    ? 'No matching members.'
+                    ? 'No members in this view.'
                     : `Showing ${rangeStart}-${rangeEnd} of ${detailTotal}`}
                 </p>
                 <div className={auditStyles.ackTableWrap}>
                   <table className={auditStyles.ackTable}>
                     <thead>
                       <tr>
-                        <th>User id</th>
-                        <th>Name</th>
-                        <th>Email</th>
+                        <th>Emp ID</th>
+                        <th>Emp name</th>
+                        <th>Emp email</th>
                         <th>Status</th>
-                        <th>Acknowledged at</th>
                       </tr>
                     </thead>
                     <tbody>
                       {detailRows.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className={styles.muted}>
-                            {detailTotal === 0 ? 'No matches for this search.' : ''}
+                          <td colSpan={4} className={styles.muted}>
+                            {detailTotal === 0 ? 'No rows match the current search and status filter.' : ''}
                           </td>
                         </tr>
                       ) : (
@@ -316,14 +388,7 @@ export function PolicyDocumentsPage() {
                             </td>
                             <td>{r.name}</td>
                             <td>{r.email}</td>
-                            <td>
-                              {r.acknowledged ? (
-                                <span className={auditStyles.badgeOk}>Acknowledged</span>
-                              ) : (
-                                <span className={auditStyles.badgePending}>Pending</span>
-                              )}
-                            </td>
-                            <td>{r.acknowledged_at ? new Date(r.acknowledged_at).toLocaleString() : '—'}</td>
+                            <td>{r.acknowledged ? 'Ack' : 'Not ack'}</td>
                           </tr>
                         ))
                       )}
@@ -336,7 +401,15 @@ export function PolicyDocumentsPage() {
                       type="button"
                       className={styles.btnSm}
                       disabled={!canPrev || detailLoading}
-                      onClick={() => detailPolicyId && void loadAckPage(detailPolicyId, detailSearch, Math.max(0, detailOffset - ACK_PAGE_SIZE))}
+                      onClick={() =>
+                        detailPolicyId &&
+                        void loadAckPage(
+                          detailPolicyId,
+                          detailSearch,
+                          Math.max(0, detailOffset - ACK_PAGE_SIZE),
+                          detailStatus,
+                        )
+                      }
                     >
                       Previous
                     </button>
@@ -345,7 +418,8 @@ export function PolicyDocumentsPage() {
                       className={styles.btnSm}
                       disabled={!canNext || detailLoading}
                       onClick={() =>
-                        detailPolicyId && void loadAckPage(detailPolicyId, detailSearch, detailOffset + ACK_PAGE_SIZE)
+                        detailPolicyId &&
+                        void loadAckPage(detailPolicyId, detailSearch, detailOffset + ACK_PAGE_SIZE, detailStatus)
                       }
                     >
                       Next

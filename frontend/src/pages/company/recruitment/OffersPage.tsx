@@ -49,6 +49,7 @@ function buildCompensationJson(
     application_id: string
     department_name: string | null
     reporting_manager_name: string | null
+    work_location_name: string | null
     job_grade: string | null
   },
 ): Record<string, unknown> {
@@ -66,6 +67,8 @@ function buildCompensationJson(
         department_name: meta.department_name,
         reporting_manager_employee_id: values.reportingManagerEmployeeId || null,
         reporting_manager_name: meta.reporting_manager_name,
+        work_location_id: values.workLocationId || null,
+        work_location_name: meta.work_location_name,
         employment_type: values.employmentType,
         work_location_mode: values.workMode,
       },
@@ -136,6 +139,7 @@ export function OffersPage() {
   const [postings, setPostings] = useState<JobPosting[]>([])
   const [requisitions, setRequisitions] = useState<Requisition[]>([])
   const [departments, setDepartments] = useState<Array<{ id: string; name: string }>>([])
+  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([])
   const [managers, setManagers] = useState<EmployeeSummary[]>([])
 
   const [applicationId, setApplicationId] = useState('')
@@ -156,12 +160,13 @@ export function OffersPage() {
     setLoading(true)
     setError(null)
     try {
-      const [a, o, p, r, d, m] = await Promise.all([
+      const [a, o, p, r, d, loc, m] = await Promise.all([
         listApplications(companyId),
         listOffers(companyId),
         listPostings(companyId),
         listRequisitions(companyId),
         apiFetch<Array<{ id: string; name: string }>>(`/companies/${companyId}/departments`),
+        apiFetch<Array<{ id: string; name: string }>>(`/companies/${companyId}/locations`),
         listEmployeeSummaries(companyId),
       ])
       setApps(a)
@@ -169,6 +174,7 @@ export function OffersPage() {
       setPostings(p)
       setRequisitions(r)
       setDepartments(d)
+      setLocations(loc)
       setManagers(m)
       const eligible = applicationsEligibleForOffer(a, o)
       setApplicationId((cur) => {
@@ -233,6 +239,7 @@ export function OffersPage() {
     if (companyRecord?.name) h.companyName = 'Pre-filled from your company profile'
     h.candidateAddressEmail = 'Add if not already on file; used on the letter header'
     h.reportingManagerEmployeeId = 'Choose from active employees'
+    h.workLocationId = 'Maps to the employee’s office location when they accept the offer'
     h.dateOfJoining = 'Also stored as official start date on the offer record'
     return h
   }, [applicationId, apps, postings, requisitions, departments, companyRecord?.name])
@@ -256,6 +263,9 @@ export function OffersPage() {
     const mgr = letter.reportingManagerEmployeeId
       ? managers.find((m) => m.id === letter.reportingManagerEmployeeId)
       : null
+    const locName = letter.workLocationId
+      ? locations.find((l) => l.id === letter.workLocationId)?.name ?? null
+      : null
     setPending(true)
     setError(null)
     try {
@@ -263,6 +273,7 @@ export function OffersPage() {
         application_id: applicationId,
         department_name: deptName,
         reporting_manager_name: mgr?.display_name ?? null,
+        work_location_name: locName,
         job_grade: app?.job_grade ?? null,
       })
       await createOffer(companyId, {
@@ -333,6 +344,7 @@ export function OffersPage() {
         values={letter}
         onChange={syncLetter}
         departments={departments}
+        locations={locations}
         managers={managers}
         hints={hints}
         companyLogoUrl={companyRecord?.logo_url ?? null}

@@ -65,6 +65,11 @@ from app.schemas.performance_learning import (
 )
 from app.services.audit import write_audit
 from app.services.activity_tracking import log_tracked_hr_action
+from app.services.scoring_engine.training import (
+    training_assigner_late_mandatory_nudge,
+    training_assigner_quality_factors,
+    training_completion_factors,
+)
 from app.services.employee_detail import display_name_and_email
 from app.services.employee_detail import display_name_and_email
 from app.services.employee_helpers import get_employee_by_id, get_employee_for_user
@@ -1724,8 +1729,10 @@ def create_training_completion(
             and float(score_val) > 0
         ):
             dup.score = score_val
-            dup.completed_at = datetime.now(timezone.utc)
+            now_done = datetime.now(timezone.utc)
+            dup.completed_at = now_done
             ta.status = "completed"
+            tqf = training_completion_factors(ta, course, now_done)
             log_tracked_hr_action(
                 db,
                 company_id=company_id,
@@ -1737,7 +1744,25 @@ def create_training_completion(
                 entity_type="training_completion",
                 entity_id=dup.id,
                 reference_started_at=ta.created_at,
+                quality_factors=tqf,
             )
+            if (
+                course
+                and training_assigner_late_mandatory_nudge(ta, course, now_done)
+                and ta.assigned_by
+            ):
+                log_tracked_hr_action(
+                    db,
+                    company_id=company_id,
+                    user_id=ta.assigned_by,
+                    role=None,
+                    module="training",
+                    action_type="mandatory_late_followup",
+                    action_detail=body.assignment_id,
+                    entity_type="training_assignment",
+                    entity_id=ta.id,
+                    quality_factors=training_assigner_quality_factors(),
+                )
             write_audit(
                 db,
                 company_id=company_id,
@@ -1770,7 +1795,9 @@ def create_training_completion(
     db.add(row)
     abandon = body.score is not None and float(body.score) == 0.0
     ta.status = "assigned" if abandon else "completed"
+    now_done = datetime.now(timezone.utc)
     write_audit(db, company_id=company_id, user_id=user.id, entity_type="training_completion", entity_id=row.id, action="create", changes_json={})
+    tqf2 = None if abandon else training_completion_factors(ta, course, now_done)
     log_tracked_hr_action(
         db,
         company_id=company_id,
@@ -1782,7 +1809,21 @@ def create_training_completion(
         entity_type="training_completion",
         entity_id=row.id,
         reference_started_at=ta.created_at,
+        quality_factors=tqf2,
     )
+    if not abandon and course and training_assigner_late_mandatory_nudge(ta, course, now_done) and ta.assigned_by:
+        log_tracked_hr_action(
+            db,
+            company_id=company_id,
+            user_id=ta.assigned_by,
+            role=None,
+            module="training",
+            action_type="mandatory_late_followup",
+            action_detail=body.assignment_id,
+            entity_type="training_assignment",
+            entity_id=ta.id,
+            quality_factors=training_assigner_quality_factors(),
+        )
     db.commit()
     db.refresh(row)
     if not abandon:

@@ -10,7 +10,9 @@ from app.database import get_db
 from app.models.audit import AuditTrailEntry
 from app.models.base import uuid_str
 from app.models.employee import Employee
+from app.models.inbox import InboxTask
 from app.models.membership import CompanyMembership
+from app.models.notification import Notification
 from app.models.org import Department, JobCatalogEntry, Location
 from app.models.recruitment import Application, Interview, JobPosting, Offer, Requisition
 from app.models.user import User
@@ -40,8 +42,18 @@ from app.schemas.recruitment import (
     RequisitionOut,
     RequisitionUpdate,
 )
+from app.services.activity_tracking import log_tracked_hr_action
 from app.services.audit import write_audit
 from app.services.integration_hooks import publish_domain_event_post_commit
+from app.services.scoring_engine import (
+    application_process_nudge_factors,
+    job_posting_completeness_factors,
+    merge_worst,
+    offer_compensation_factors,
+    requisition_completeness_factors,
+)
+from app.services.employee_document_sync import ensure_default_document_rows, sync_document_inbox_tasks
+from app.services.profile_inbox_sync import sync_profile_inbox_tasks
 from app.services.recruitment_external_status import (
     external_status_notify_value,
     job_posting_req_code_for_posting,
@@ -161,6 +173,217 @@ def _user_name_map(db: Session, user_ids: set[str]) -> dict[str, str]:
     return {u.id: u.name for u in r.scalars().all()}
 
 
+def _offer_seed_personal_info(user: User, offer: Offer) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    if user.name.strip():
+        out["fullName"] = user.name.strip()
+    if user.email.strip():
+        out["personalEmail"] = user.email.strip()
+    comp = offer.compensation_json if isinstance(offer.compensation_json, dict) else {}
+    if isinstance(comp.get("dob"), str) and comp.get("dob", "").strip():
+        out["dob"] = str(comp["dob"]).strip()
+    elif isinstance(comp.get("date_of_birth"), str) and comp.get("date_of_birth", "").strip():
+        out["dob"] = str(comp["date_of_birth"]).strip()
+    if isinstance(comp.get("phone"), str) and comp.get("phone", "").strip():
+        out["phone"] = str(comp["phone"]).strip()
+    if isinstance(comp.get("address"), str) and comp.get("address", "").strip():
+        out["address"] = str(comp["address"]).strip()
+    if isinstance(comp.get("emergencyContacts"), list):
+        out["emergencyContacts"] = comp["emergencyContacts"]
+    return out
+
+
+def _offer_letter_manager_location_ids(offer: Offer) -> tuple[str | None, str | None]:
+    """From offer.compensation_json: reporting manager and org location set on the offer letter."""
+    comp = offer.compensation_json if isinstance(offer.compensation_json, dict) else {}
+    role: dict[str, Any] = {}
+    ol = comp.get("offer_letter")
+    if isinstance(ol, dict) and isinstance(ol.get("role"), dict):
+        role = ol["role"]
+    elif isinstance(comp.get("role"), dict):
+        role = comp["role"]
+    else:
+        # Legacy / flat fallbacks
+        if isinstance(comp.get("reporting_manager_employee_id"), str):
+            role["reporting_manager_employee_id"] = comp.get("reporting_manager_employee_id")
+        w = comp.get("work_location_id") or comp.get("location_id")
+        if isinstance(w, str):
+            role["work_location_id"] = w
+    mid = role.get("reporting_manager_employee_id")
+    mid_s = str(mid).strip() if isinstance(mid, str) and str(mid).strip() else None
+    loc = role.get("work_location_id") or role.get("location_id")
+    loc_s = str(loc).strip() if isinstance(loc, str) and str(loc).strip() else None
+    return (mid_s, loc_s)
+
+
+def _validate_manager_for_company(db: Session, company_id: str, manager_employee_id: str) -> str | None:
+    row = db.execute(
+        select(Employee).where(Employee.id == manager_employee_id, Employee.company_id == company_id)
+    ).scalar_one_or_none()
+    return manager_employee_id if row is not None else None
+
+
+def _validate_location_for_company(db: Session, company_id: str, location_id: str) -> str | None:
+    row = db.execute(
+        select(Location).where(Location.id == location_id, Location.company_id == company_id)
+    ).scalar_one_or_none()
+    return location_id if row is not None else None
+
+
+def _generate_employee_code(db: Session, company_id: str, user: User) -> str:
+    stem = "".join(ch for ch in user.name.upper() if ch.isalnum())[:6] or "EMP"
+    suffix = "".join(ch for ch in user.id.upper() if ch.isalnum())[:6] or "NEW"
+    base = f"{stem}-{suffix}"
+    candidate = base
+    seq = 2
+    while db.execute(
+        select(Employee.id).where(Employee.company_id == company_id, Employee.employee_code == candidate)
+    ).scalar_one_or_none():
+        candidate = f"{base}-{seq}"
+        seq += 1
+    return candidate[:64]
+
+
+def _sync_offer_onboarding_followups(
+    db: Session,
+    *,
+    company_id: str,
+    user_id: str,
+    employee: Employee,
+) -> None:
+    before_open = {
+        t.type
+        for t in db.execute(
+            select(InboxTask).where(
+                InboxTask.company_id == company_id,
+                InboxTask.user_id == user_id,
+                InboxTask.entity_type == "employee",
+                InboxTask.entity_id == employee.id,
+                InboxTask.status == "open",
+            )
+        ).scalars().all()
+    }
+    ensure_default_document_rows(db, company_id, employee.id)
+    sync_profile_inbox_tasks(db, employee)
+    sync_document_inbox_tasks(db, employee)
+    db.flush()
+    after_open_rows = list(
+        db.execute(
+            select(InboxTask).where(
+                InboxTask.company_id == company_id,
+                InboxTask.user_id == user_id,
+                InboxTask.entity_type == "employee",
+                InboxTask.entity_id == employee.id,
+                InboxTask.status == "open",
+            )
+        ).scalars().all()
+    )
+    after_open = {t.type for t in after_open_rows}
+    new_types = after_open - before_open
+    if not new_types:
+        return
+    pretty_by_type = {
+        "profile_add_dob": "date of birth",
+        "profile_add_personal_email": "personal email",
+        "profile_add_phone": "phone number",
+        "profile_add_address": "address",
+        "profile_add_emergency": "emergency contact",
+        "profile_add_documents": "required documents",
+    }
+    for task in after_open_rows:
+        if task.type not in new_types:
+            continue
+        pretty = pretty_by_type.get(task.type, "profile details")
+        db.add(
+            Notification(
+                id=uuid_str(),
+                company_id=company_id,
+                user_id=user_id,
+                type="employee_onboarding_missing_info",
+                title=f"Complete onboarding: add {pretty}",
+                message=f"Your employee profile was created from your accepted offer. Please add {pretty} to finish onboarding.",
+                entity_type="employee",
+                entity_id=employee.id,
+                read=False,
+                context_json={"task_type": task.type, "focus": (task.context_json or {}).get("focus")},
+            )
+        )
+
+
+def _auto_create_employee_from_accepted_offer(
+    db: Session, *, company_id: str, offer: Offer, app_row: Application, actor_user_id: str
+) -> Employee | None:
+    existing = db.execute(
+        select(Employee).where(Employee.company_id == company_id, Employee.user_id == app_row.candidate_user_id)
+    ).scalar_one_or_none()
+    if existing is not None:
+        return None
+
+    user = db.execute(select(User).where(User.id == app_row.candidate_user_id)).scalar_one_or_none()
+    if user is None:
+        return None
+
+    posting = db.execute(
+        select(JobPosting).where(JobPosting.id == app_row.posting_id, JobPosting.company_id == company_id)
+    ).scalar_one_or_none()
+    req = None
+    if posting is not None:
+        req = db.execute(
+            select(Requisition).where(
+                Requisition.id == posting.requisition_id,
+                Requisition.company_id == company_id,
+            )
+        ).scalar_one_or_none()
+
+    personal_info = _offer_seed_personal_info(user, offer)
+    raw_mgr_id, raw_loc_id = _offer_letter_manager_location_ids(offer)
+    manager_id = _validate_manager_for_company(db, company_id, raw_mgr_id) if raw_mgr_id else None
+    location_id = _validate_location_for_company(db, company_id, raw_loc_id) if raw_loc_id else None
+    employee = Employee(
+        id=uuid_str(),
+        company_id=company_id,
+        user_id=user.id,
+        employee_code=_generate_employee_code(db, company_id, user),
+        department_id=req.department_id if req else None,
+        job_id=req.job_id if req else None,
+        manager_id=manager_id,
+        location_id=location_id,
+        status="active",
+        hire_date=offer.start_date,
+        personal_info_json=personal_info or {},
+        documents_json={},
+        onboarding_checklist_json={"offerAccepted": True},
+    )
+    db.add(employee)
+    db.flush()
+
+    write_audit(
+        db,
+        company_id=company_id,
+        user_id=actor_user_id,
+        entity_type="employee",
+        entity_id=employee.id,
+        action="create_from_offer_accept",
+        changes_json={"offer_id": offer.id, "application_id": app_row.id},
+    )
+    _sync_offer_onboarding_followups(db, company_id=company_id, user_id=user.id, employee=employee)
+    db.add(
+        Notification(
+            id=uuid_str(),
+            company_id=company_id,
+            user_id=user.id,
+            type="employee_onboarding_started",
+            title="Employee profile created",
+            message="Your offer was accepted and your employee profile has been created. Complete any open onboarding tasks in Inbox.",
+            entity_type="employee",
+            entity_id=employee.id,
+            read=False,
+            context_json={"source": "offer_accept"},
+        )
+    )
+    return employee
+
+
 def _audit_to_application_activity(
     audit: AuditTrailEntry,
     app: Application,
@@ -234,7 +457,7 @@ def create_requisition(
     ],
     db: Annotated[Session, Depends(get_db)],
 ) -> RequisitionOut:
-    user, _ = ctx
+    user, membership = ctx
     if body.department_id:
         d = db.execute(
             select(Department).where(Department.id == body.department_id, Department.company_id == company_id)
@@ -271,6 +494,18 @@ def create_requisition(
         action="create",
         changes_json={"headcount": body.headcount},
     )
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="recruitment",
+        action_type="requisition_create",
+        action_detail=req.req_code or req.id,
+        entity_type="requisition",
+        entity_id=req.id,
+        quality_factors=requisition_completeness_factors(req),
+    )
     db.commit()
     db.refresh(req)
     return _requisition_to_out(req)
@@ -287,7 +522,7 @@ def update_requisition(
     ],
     db: Annotated[Session, Depends(get_db)],
 ) -> RequisitionOut:
-    user, _ = ctx
+    user, membership = ctx
     req = _get_requisition_for_company(db, company_id, requisition_id)
     data = body.model_dump(exclude_unset=True)
     if "hiring_criteria" in data:
@@ -340,6 +575,18 @@ def update_requisition(
         entity_id=requisition_id,
         action="update",
         changes_json=data,
+    )
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="recruitment",
+        action_type="requisition_update",
+        action_detail=req.status,
+        entity_type="requisition",
+        entity_id=requisition_id,
+        quality_factors=requisition_completeness_factors(req),
     )
     db.commit()
     db.refresh(req)
@@ -394,7 +641,7 @@ def update_job_posting(
     ],
     db: Annotated[Session, Depends(get_db)],
 ) -> JobPosting:
-    user, _ = ctx
+    user, membership = ctx
     posting = _get_posting_for_company(db, company_id, posting_id)
     data = body.model_dump(exclude_unset=True)
     if "title" in data and data["title"] is not None:
@@ -415,6 +662,18 @@ def update_job_posting(
         action="update",
         changes_json=data,
     )
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="recruitment",
+        action_type="posting_update",
+        action_detail=posting.title[:120] if posting.title else posting_id,
+        entity_type="job_posting",
+        entity_id=posting_id,
+        quality_factors=job_posting_completeness_factors(posting),
+    )
     db.commit()
     db.refresh(posting)
     return posting
@@ -430,7 +689,7 @@ def create_job_posting(
     ],
     db: Annotated[Session, Depends(get_db)],
 ) -> JobPosting:
-    user, _ = ctx
+    user, membership = ctx
     _get_requisition_for_company(db, company_id, body.requisition_id)
     existing = db.execute(
         select(JobPosting.id).where(
@@ -464,6 +723,18 @@ def create_job_posting(
         entity_id=posting.id,
         action="create",
         changes_json={"title": body.title},
+    )
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="recruitment",
+        action_type="posting_create",
+        action_detail=posting.title[:120],
+        entity_type="job_posting",
+        entity_id=posting.id,
+        quality_factors=job_posting_completeness_factors(posting),
     )
     db.commit()
     db.refresh(posting)
@@ -708,7 +979,7 @@ def update_application_stage(
     ],
     db: Annotated[Session, Depends(get_db)],
 ) -> Application:
-    user, _ = ctx
+    user, membership = ctx
     app_row = _get_application_for_company(db, company_id, application_id)
     prev_stage = app_row.stage
     prev_status = app_row.status
@@ -728,6 +999,18 @@ def update_application_stage(
             "stage": body.stage,
             "status": body.status,
         },
+    )
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="recruitment",
+        action_type="application_stage",
+        action_detail=app_row.stage,
+        entity_type="application",
+        entity_id=app_row.id,
+        quality_factors=application_process_nudge_factors(db, company_id=company_id, application=app_row),
     )
     db.commit()
     db.refresh(app_row)
@@ -957,8 +1240,8 @@ def create_interview(
     ],
     db: Annotated[Session, Depends(get_db)],
 ) -> Interview:
-    user, _ = ctx
-    _get_application_for_company(db, company_id, application_id)
+    user, membership = ctx
+    app_row = _get_application_for_company(db, company_id, application_id)
     row = Interview(
         id=uuid_str(),
         application_id=application_id,
@@ -978,6 +1261,19 @@ def create_interview(
         entity_id=row.id,
         action="create",
         changes_json={"application_id": application_id},
+    )
+    db.flush()
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="recruitment",
+        action_type="interview_create",
+        action_detail=application_id,
+        entity_type="interview",
+        entity_id=row.id,
+        quality_factors=application_process_nudge_factors(db, company_id=company_id, application=app_row),
     )
     db.commit()
     db.refresh(row)
@@ -1024,7 +1320,7 @@ def create_offer(
     ],
     db: Annotated[Session, Depends(get_db)],
 ) -> Offer:
-    user, _ = ctx
+    user, membership = ctx
     app_row = _get_application_for_company(db, company_id, body.application_id)
     prev_stage = app_row.stage
     prev_status = app_row.status
@@ -1062,6 +1358,24 @@ def create_offer(
         action="create",
         changes_json={"application_id": body.application_id},
     )
+    db.flush()
+    oqf, critical_band = offer_compensation_factors(db, offer=offer)
+    nud = application_process_nudge_factors(db, company_id=company_id, application=app_row)
+    merged = merge_worst(oqf, nud)
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="recruitment",
+        action_type="offer_create",
+        action_detail=offer.id,
+        entity_type="offer",
+        entity_id=offer.id,
+        quality_factors=merged,
+        critical_failure=critical_band,
+        extra_context={"spec_rule": "C-PAY-BAND-01", "out_of_band_severe": critical_band} if critical_band else None,
+    )
     db.commit()
     db.refresh(offer)
     db.refresh(app_row)
@@ -1092,9 +1406,17 @@ def respond_offer(
     offer.responded_at = datetime.now(timezone.utc)
     prev_stage = app_row.stage
     prev_status = app_row.status
+    auto_employee: Employee | None = None
     if body.status == "accepted":
         app_row.stage = "hired"
         app_row.status = "accepted"
+        auto_employee = _auto_create_employee_from_accepted_offer(
+            db,
+            company_id=company_id,
+            offer=offer,
+            app_row=app_row,
+            actor_user_id=app_row.candidate_user_id,
+        )
     elif body.status == "declined":
         app_row.stage = "rejected"
         app_row.status = "declined"
@@ -1125,7 +1447,10 @@ def respond_offer(
         entity_type="offer",
         entity_id=offer_id,
         actor_user_id=app_row.candidate_user_id,
-        data={"application_id": offer.application_id},
+        data={
+            "application_id": offer.application_id,
+            "employee_id": auto_employee.id if auto_employee else None,
+        },
     )
     db.refresh(app_row)
     post_application_pipeline_status(

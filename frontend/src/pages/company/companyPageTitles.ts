@@ -1,7 +1,11 @@
 /** Page titles keyed by first path segment(s) after /company/:id/ */
 
-export function companySectionTitle(pathAfterCompany: string): { title: string; subtitle?: string } {
+export function companySectionTitle(
+  pathAfterCompany: string,
+  search: string = '',
+): { title: string; subtitle?: string } {
   const parts = pathAfterCompany.split('/').filter(Boolean)
+  const tabParam = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search).get('tab')
   const key =
     parts[0] === 'integrations' && parts[1] === 'sso'
       ? 'integrations/sso'
@@ -14,9 +18,11 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
             : parts[0] === 'recruitment' && parts[1] === 'tracking'
               ? 'recruitment/tracking'
               : parts[0] === 'learning' && parts[1]
-            ? `learning/${parts[1]}`
-            : parts[0] === 'audits' && parts[1] === 'policies' && parts[2] === 'publish'
-                  ? 'audits/policies/publish'
+                ? `learning/${parts[1]}`
+                : parts[0] === 'audits' && parts[1] === 'policies'
+                  ? tabParam === 'publish'
+                    ? 'audits/policies/publish'
+                    : 'audits/policies'
                   : parts[0] === 'audits' && parts[1]
                     ? `audits/${parts[1]}`
                     : parts[0] || 'dashboard'
@@ -91,8 +97,8 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
       subtitle: 'Activity and system audit entries by user',
     },
     'audits/policies': {
-      title: 'Policy documents',
-      subtitle: 'Download and acknowledge company policies',
+      title: 'Policy library',
+      subtitle: 'Browse, acknowledge, and download policy documents',
     },
     'audits/policies/publish': {
       title: 'Publish policy',
@@ -123,9 +129,13 @@ export function companySectionTitle(pathAfterCompany: string): { title: string; 
     inbox: { title: 'Inbox', subtitle: 'Tasks requiring your action' },
     progress: {
       title: 'Progress',
-      subtitle: 'Your certification readiness across Employee, Audit, and Leave',
+      subtitle:
+        'Certification readiness and four-dimension quality scores (no custom SLAs required to start)',
     },
-    analytics: { title: 'Analytics', subtitle: 'Company dashboard metrics' },
+    analytics: {
+      title: 'Analytics',
+      subtitle: 'Bento dashboards, custom CSV reports, and data exports across HR domains',
+    },
     tracking: {
       title: 'Tracking & score',
       subtitle: 'Activity logs and scoring',

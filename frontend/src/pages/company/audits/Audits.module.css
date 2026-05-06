@@ -386,6 +386,43 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
+.ackToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.25rem;
+  margin-top: 0.75rem;
+}
+
+.ackToolbar .ackSearchLabel {
+  flex: 1 1 16rem;
+  min-width: 12rem;
+}
+
+.ackToolbar .ackSearchInput {
+  max-width: none;
+}
+
+.ackStatusFilter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ackStatusSelect {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  min-width: 10rem;
+}
+
+.ackStatusSelect:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--border));
+}
+
 .ackTableMeta {
   font-size: 0.85rem;
   margin: 0.75rem 0 0.35rem;

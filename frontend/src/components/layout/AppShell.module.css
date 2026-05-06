@@ -1,6 +1,9 @@
 .root {
   display: flex;
   min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
   background: var(--bg-page);
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -14,6 +17,8 @@
   display: flex;
   flex-direction: column;
   padding: 1rem 0;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .brand {
@@ -63,103 +68,6 @@
   gap: 2px;
 }
 
-.navGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 0.35rem;
-}
-
-.navGroupLabel {
-  padding: 0.5rem 1.25rem 0.25rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
-}
-
-/* Employees: collapsible main tab + indented sub-links */
-.navTree {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 0.35rem;
-}
-
-.navTreeParentRow {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-}
-
-.navTreeToggle {
-  flex-shrink: 0;
-  width: 2.15rem;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.88);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0 6px 6px 0;
-}
-
-.navTreeToggle:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.navTreeToggle:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.5);
-  outline-offset: -2px;
-}
-
-.navTreeToggleIcon {
-  font-size: 0.62rem;
-  line-height: 1;
-  user-select: none;
-  display: block;
-}
-
-.navTreeParentLink {
-  flex: 1;
-  min-width: 0;
-  border-radius: 6px 0 0 6px;
-}
-
-.navTreeBranches {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0 0 0.4rem 0;
-  padding: 0.15rem 0 0.15rem 1.35rem;
-}
-
-.navTreeBranchLink {
-  display: block;
-  min-width: 0;
-  padding: 0.5rem 0.65rem 0.5rem 0.75rem;
-  color: rgba(255, 255, 255, 0.88);
-  text-decoration: none;
-  font-size: 0.82rem;
-  font-weight: 500;
-  border-radius: 0 6px 6px 0;
-  border-left: 3px solid transparent;
-  line-height: 1.3;
-}
-
-.navTreeBranchLink:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-}
-
-.navLinkNested {
-  padding-left: 1.65rem;
-  font-size: 0.85rem;
-}
-
 .navLink {
   padding: 0.65rem 1.25rem;
   color: rgba(255, 255, 255, 0.85);
@@ -201,7 +109,9 @@
   font-weight: 500;
   font-family: inherit;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .navGroupLabel:hover {
@@ -269,6 +179,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .topbar {
@@ -335,6 +246,54 @@
   background: color-mix(in srgb, var(--color-primary) 8%, var(--bg-card));
 }
 
+.accountMenuWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.accountMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  min-width: 208px;
+  z-index: 10040;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, var(--color-primary) 10%);
+  background: var(--bg-card);
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
+  overflow: hidden;
+  padding: 0.25rem 0;
+}
+
+.accountMenuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 1rem;
+  margin: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.accountMenuItem:hover {
+  background: color-mix(in srgb, var(--color-primary) 7%, transparent);
+  color: var(--color-primary);
+}
+
+.accountMenuDivider {
+  height: 1px;
+  margin: 0.25rem 0.5rem;
+  background: var(--border);
+  border: none;
+}
+
 .signOutBtnTop {
   border: 1px solid rgba(195, 55, 39, 0.32);
   background: rgba(195, 55, 39, 0.08);
@@ -353,7 +312,7 @@
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 15000;
   background: rgba(0, 0, 0, 0.44);
   display: flex;
   align-items: center;
@@ -442,6 +401,7 @@
 
 .content {
   flex: 1;
+  min-height: 0;
   padding: 1.75rem;
   overflow: auto;
 }

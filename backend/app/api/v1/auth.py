@@ -8,6 +8,7 @@ from app.api.deps import get_current_user
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.database import get_db
 from app.models.base import uuid_str
+from app.services.audit import write_audit
 from app.models.user import User
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, RegisterRequest, Token, UserOut
 
@@ -30,6 +31,15 @@ def register(
         is_platform_admin=False,
     )
     db.add(user)
+    write_audit(
+        db,
+        company_id=None,
+        user_id=user.id,
+        entity_type="user_account",
+        entity_id=user.id,
+        action="register",
+        changes_json={},
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -65,5 +75,14 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New password must be different")
     user.password_hash = get_password_hash(body.new_password)
     db.add(user)
+    write_audit(
+        db,
+        company_id=None,
+        user_id=user.id,
+        entity_type="user_account",
+        entity_id=user.id,
+        action="change_password",
+        changes_json={},
+    )
     db.commit()
     return {"status": "ok"}

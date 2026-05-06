@@ -67,7 +67,8 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 0.875rem;
-  background: #fff;
+  /* Avoid `background` shorthand on .select — it strips native <select> chevrons from index.css */
+  background-color: #fff;
   box-sizing: border-box;
 }
 
@@ -79,6 +80,13 @@
 
 .select {
   cursor: pointer;
+}
+
+/* Room for global chevron + divider (index.css); overrides shared padding on <select> only */
+select.select {
+  padding: 0.5rem 2.55rem 0.5rem 0.65rem;
+  border-radius: 10px;
+  border-color: color-mix(in srgb, var(--color-primary) 22%, var(--border));
 }
 
 .readonlyBox {

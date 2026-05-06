@@ -1,28 +1,67 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { INBOX_BADGE_INVALIDATE_EVENT, listInboxTasks } from '../api/inboxApi'
-import { listNotifications, type NotificationRow } from '../api/notificationsApi'
+import { listNotifications, markNotificationsRead, type NotificationRow } from '../api/notificationsApi'
 import styles from '../pages/company/CompanyWorkspacePage.module.css'
 
 export function NotificationsPanel({ companyId }: { companyId: string }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const wrapRef = useRef<HTMLDivElement | null>(null)
   const [openCount, setOpenCount] = useState(0)
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [loadingPanel, setLoadingPanel] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rows, setRows] = useState<NotificationRow[]>([])
+  const [listTick, setListTick] = useState(0)
 
   const unread = useMemo(() => rows.filter((r) => !r.read).length, [rows])
 
+  const bumpNotifications = useCallback(() => setListTick((t) => t + 1), [])
+
   useEffect(() => {
-    if (!companyId || !open) return
-    setLoading(true)
+    if (!companyId) return
+    let cancelled = false
+    void listNotifications(companyId)
+      .then((items) => {
+        if (!cancelled) {
+          setRows(items)
+          setError(null)
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load notifications')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, location.pathname, location.search, listTick])
+
+  useEffect(() => {
+    if (!open || !companyId) return
+    let cancelled = false
+    setLoadingPanel(true)
     setError(null)
     void listNotifications(companyId)
-      .then((items) => setRows(items.map((x) => ({ ...x, read: true }))))
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load notifications'))
-      .finally(() => setLoading(false))
+      .then(async (items) => {
+        if (cancelled) return
+        setRows(items)
+        const unreadIds = items.filter((i) => !i.read).map((i) => i.id)
+        if (unreadIds.length > 0) {
+          await markNotificationsRead(companyId, unreadIds)
+          if (cancelled) return
+          setRows((prev) => prev.map((r) => (unreadIds.includes(r.id) ? { ...r, read: true } : r)))
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load notifications')
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPanel(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [companyId, open])
 
   const refreshOpenCount = useCallback(() => {
@@ -37,9 +76,15 @@ export function NotificationsPanel({ companyId }: { companyId: string }) {
   }, [refreshOpenCount, location.pathname, location.search])
 
   useEffect(() => {
-    const onInvalidate = () => refreshOpenCount()
+    const onInvalidate = () => {
+      refreshOpenCount()
+      bumpNotifications()
+    }
     const onVisible = () => {
-      if (document.visibilityState === 'visible') refreshOpenCount()
+      if (document.visibilityState === 'visible') {
+        refreshOpenCount()
+        bumpNotifications()
+      }
     }
     window.addEventListener(INBOX_BADGE_INVALIDATE_EVENT, onInvalidate)
     document.addEventListener('visibilitychange', onVisible)
@@ -47,7 +92,24 @@ export function NotificationsPanel({ companyId }: { companyId: string }) {
       window.removeEventListener(INBOX_BADGE_INVALIDATE_EVENT, onInvalidate)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [refreshOpenCount])
+  }, [refreshOpenCount, bumpNotifications])
+
+  useEffect(() => {
+    if (!open) return
+    const onDocMouseDown = (e: MouseEvent) => {
+      const el = wrapRef.current
+      if (el && !el.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
 
   function navigateFromNotification(row: NotificationRow) {
     if (row.entity_type === 'leave_request') navigate(`/company/${companyId}/hr-ops`)
@@ -66,15 +128,41 @@ export function NotificationsPanel({ companyId }: { companyId: string }) {
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+    <div ref={wrapRef} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
       <div className={styles.notificationsWrap}>
         <button
           type="button"
-          className={styles.btnGhost}
+          className={`${styles.btnGhost} ${styles.notificationsBellBtn}`}
           onClick={() => setOpen((v) => !v)}
           aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+          aria-expanded={open}
         >
-          Inbox {unread > 0 ? `(${unread})` : ''}
+          <svg
+            width={20}
+            height={20}
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden={true}
+          >
+            <path
+              d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M10.29 21a1.94 1.94 0 0 0 3.42 0"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {unread > 0 ? (
+            <span className={styles.notificationsBellBadge}>{unread > 99 ? '99+' : unread}</span>
+          ) : null}
         </button>
         {open ? (
           <div className={styles.notificationsPanel} role="region" aria-label="Notifications">
@@ -83,11 +171,11 @@ export function NotificationsPanel({ companyId }: { companyId: string }) {
             </div>
             <div className={styles.notificationsPanelBody}>
               {error ? <p className={styles.error}>{error}</p> : null}
-              {loading ? <p className={styles.muted}>Loading…</p> : null}
-              {!loading && rows.length === 0 && !error ? (
+              {loadingPanel ? <p className={styles.muted}>Loading…</p> : null}
+              {!loadingPanel && rows.length === 0 && !error ? (
                 <p className={styles.notificationsEmpty}>No notifications yet.</p>
               ) : null}
-              {!loading &&
+              {!loadingPanel &&
                 rows.map((n) => (
                   <div key={n.id} className={styles.notificationsItem}>
                     <button

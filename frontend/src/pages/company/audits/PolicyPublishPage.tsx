@@ -2,9 +2,12 @@ import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../../auth/AuthContext'
 import { createPolicy } from '../../../api/auditsApi'
-import { canListAllActivityLogs } from '../../../company/navConfig'
+import { canListAllActivityLogs } from '../../../company/companyAccess'
 import styles from '../CompanyWorkspacePage.module.css'
 import auditStyles from './Audits.module.css'
+
+const libraryHref = (companyId: string) =>
+  `/company/${companyId}/audits/policies?tab=library`
 
 export function PolicyPublishPage() {
   const { companyId = '' } = useParams()
@@ -46,7 +49,7 @@ export function PolicyPublishPage() {
         <section className={styles.card}>
           <h3 className={styles.h3}>Publish policy</h3>
           <p className={styles.error}>You do not have access to publish policies.</p>
-          <Link to={`/company/${companyId}/audits/policies`}>Back to policy documents</Link>
+          <Link to={libraryHref(companyId)}>Back to policy library</Link>
         </section>
       </div>
     )
@@ -59,7 +62,7 @@ export function PolicyPublishPage() {
         <p className={styles.hint}>
           Upload a policy file. Every active member receives an inbox task to download and acknowledge. Acknowledgments
           appear in audit trails.{' '}
-          <Link to={`/company/${companyId}/audits/policies`}>View policy documents</Link>
+          <Link to={libraryHref(companyId)}>View policy library</Link>
         </p>
         {done ? (
           <p className={styles.hint} style={{ marginBottom: '1rem' }}>

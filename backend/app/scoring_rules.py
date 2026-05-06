@@ -44,6 +44,7 @@ SLA_SECONDS_BY_ACTION: Final[dict[str, dict[str, int | None]]] = {
     "compliance": {
         "policy_created": 3 * 24 * 60 * 60,  # 3 days
         "policy_acknowledged": 14 * 24 * 60 * 60,  # 14 days
+        "policy_downloaded": 2 * 24 * 60 * 60,  # 2 days
     },
     "leave": {
         "create": 8 * 60 * 60,  # 8 hours for request intake quality
@@ -59,11 +60,14 @@ SLA_SECONDS_BY_ACTION: Final[dict[str, dict[str, int | None]]] = {
     },
 }
 
-# Progress dashboard module labels.
+# Progress dashboard module labels (must match ActivityLog.module for rows to roll up).
 PROGRESS_MODULES: Final[dict[str, str]] = {
     "employees": "Employee",
     "compliance": "Audit",
     "leave": "Leave",
+    "recruitment": "Recruitment",
+    "training": "Learning",
+    "compensation": "Compensation",
 }
 
 # Required action coverage used by progress dashboard readiness checks.

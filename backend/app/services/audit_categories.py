@@ -28,7 +28,7 @@ _AUDIT_CATEGORIES: tuple[AuditCategoryDef, ...] = (
         "profile",
         "Profile & employee records",
         frozenset({"employees"}),
-        frozenset({"employee", "employee_document", "lifecycle_event"}),
+        frozenset({"employee", "employee_document", "lifecycle_event", "user_account"}),
     ),
     AuditCategoryDef(
         "compliance",
@@ -56,6 +56,7 @@ _AUDIT_CATEGORIES: tuple[AuditCategoryDef, ...] = (
                 "training_assignment",
                 "training_completion",
                 "skill_profile",
+                "scenario_run",
             }
         ),
     ),
@@ -77,6 +78,9 @@ _AUDIT_CATEGORIES: tuple[AuditCategoryDef, ...] = (
                 "org_role",
                 "company",
                 "company_membership",
+                "webhook_subscription",
+                "data_export",
+                "company_registration_request",
             }
         ),
     ),
@@ -84,7 +88,7 @@ _AUDIT_CATEGORIES: tuple[AuditCategoryDef, ...] = (
         "workflows",
         "Workflows & approvals",
         frozenset(),
-        frozenset({"workflow_instance"}),
+        frozenset({"workflow_instance", "notification"}),
     ),
     AuditCategoryDef(
         "payroll_engagement",

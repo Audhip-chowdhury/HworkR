@@ -1,4 +1,13 @@
 import type { CompanyMembership } from '../auth/AuthContext'
+import {
+  ALL_COMPANY_ROLES,
+  COMPENSATION_ADMIN_ROLES,
+  HR_NON_EMPLOYEE_ROLES,
+  HR_OPS_ADMIN_ROLES,
+  LD_ADMIN_ROLES,
+  LEAVE_ORG_ADMIN_ROLES,
+  RECRUITMENT_ADMIN_ROLES,
+} from './companyAccess'
 
 export type NavLeaf = { to: string; label: string; roles?: string[] }
 
@@ -20,51 +29,23 @@ export type CompanyNavOptions = {
   showTeamGoals?: boolean
 }
 
-const EXPORT_ROLES = new Set(['company_admin', 'talent_acquisition', 'hr_ops', 'ld_performance', 'compensation_analytics'])
-const SCENARIO_ROLES = new Set(['company_admin', 'hr_ops', 'ld_performance'])
-const HR_ANALYTICS = new Set([
-  'company_admin',
-  'talent_acquisition',
-  'hr_ops',
-  'ld_performance',
-  'compensation_analytics',
-])
+const ALL_MEMBERS = [...ALL_COMPANY_ROLES]
 
-const ALL_MEMBERS = [
-  'company_admin',
-  'talent_acquisition',
-  'hr_ops',
-  'ld_performance',
-  'compensation_analytics',
-  'employee',
-]
+/** Approvals + org balance tracker — not Talent Acquisition (recruiting). */
+const LEAVE_ORG_SUBTABS_ROLES = [...LEAVE_ORG_ADMIN_ROLES]
 
-const WF_ROLES = ['company_admin', 'talent_acquisition', 'hr_ops']
+/** Employee directory — HR Operations + admin only. */
+const EMPLOYEES_ADMIN_ROLES = [...HR_OPS_ADMIN_ROLES]
 
-const PAYROLL_ROLES = ['company_admin', 'compensation_analytics', 'hr_ops', 'employee'] as const
-const PAYROLL_CONFIGURE_ROLES = ['company_admin', 'compensation_analytics', 'hr_ops'] as const
-const BENEFITS_ROLES = ['company_admin', 'compensation_analytics', 'employee'] as const
-const BENEFITS_MANAGE_ROLES = ['company_admin', 'compensation_analytics'] as const
+const PAYROLL_ROLES = [...ALL_COMPANY_ROLES] as const
+const PAYROLL_CONFIGURE_ROLES = [...COMPENSATION_ADMIN_ROLES] as const
 
-const SURVEYS_ROLES = ['company_admin', 'compensation_analytics', 'hr_ops', 'employee'] as const
-const SURVEYS_HR_ROLES = ['company_admin', 'compensation_analytics', 'hr_ops'] as const
+const BENEFITS_ROLES = [...ALL_COMPANY_ROLES] as const
+const BENEFITS_MANAGE_ROLES = [...COMPENSATION_ADMIN_ROLES] as const
 
-const EMPLOYEES_ROLES = [
-  'company_admin',
-  'hr_ops',
-  'talent_acquisition',
-  'ld_performance',
-  'compensation_analytics',
-] as const
-
-/** HR / leadership roles — not the base `employee` self-service role */
-const LEAVE_HR_SUBTABS_ROLES = [
-  'company_admin',
-  'hr_ops',
-  'talent_acquisition',
-  'ld_performance',
-  'compensation_analytics',
-]
+const SURVEYS_ROLES = [...ALL_COMPANY_ROLES] as const
+/** Responses / trends — HR Ops + admin. */
+const SURVEYS_HR_ADMIN_ROLES = [...HR_OPS_ADMIN_ROLES] as const
 
 export const COMPANY_NAV_DEF: NavDefItem[] = [
   { to: '', label: 'Dashboard', roles: ALL_MEMBERS },
@@ -76,7 +57,7 @@ export const COMPANY_NAV_DEF: NavDefItem[] = [
     type: 'group',
     label: 'Employees',
     parentTo: 'employees/profile',
-    roles: [...EMPLOYEES_ROLES],
+    roles: [...EMPLOYEES_ADMIN_ROLES],
     children: [
       { to: 'employees/profile', label: 'Employee profile management' },
       { to: 'employees/lifecycle', label: 'Lifecycle events' },
@@ -90,27 +71,25 @@ export const COMPANY_NAV_DEF: NavDefItem[] = [
     children: [
       { to: 'leave/policies', label: 'Leave policies' },
       { to: 'leave/holidays', label: 'Holiday calendar' },
-      { to: 'leave/approvals', label: 'Leave approvals', roles: LEAVE_HR_SUBTABS_ROLES },
+      { to: 'leave/approvals', label: 'Leave approvals', roles: LEAVE_ORG_SUBTABS_ROLES },
       { to: 'leave/request', label: 'Leave request' },
-      { to: 'leave/balances', label: 'Leave balance tracker', roles: LEAVE_HR_SUBTABS_ROLES },
+      { to: 'leave/balances', label: 'Leave balance tracker', roles: LEAVE_ORG_SUBTABS_ROLES },
     ],
   },
+  { to: 'audits/trail', label: 'Audit trail', roles: ALL_MEMBERS },
   {
     type: 'group',
-    label: 'Audits',
-    parentTo: 'audits/trail',
+    label: 'Policies',
+    parentTo: 'audits/policies?tab=library',
     roles: ALL_MEMBERS,
     children: [
-      { to: 'audits/trail', label: 'Audit trail' },
-      { to: 'audits/policies', label: 'Policy documents' },
-      { to: 'audits/policies/publish', label: 'Publish policy', roles: LEAVE_HR_SUBTABS_ROLES },
+      { to: 'audits/policies?tab=library', label: 'Policy library' },
+      { to: 'audits/policies?tab=publish', label: 'Publish', roles: [...HR_OPS_ADMIN_ROLES] },
     ],
   },
-  { to: 'members', label: 'Members', roles: ['company_admin'] },
-  { to: 'hr-ops', label: 'HR Ops', roles: ['company_admin', 'hr_ops', 'employee'] },
-  { to: 'workflows', label: 'Workflows', roles: WF_ROLES },
-  { to: 'recruitment', label: 'Recruitment', roles: ALL_MEMBERS },
-  { to: 'performance', label: 'Performance', roles: ['hr_ops'] },
+  { to: 'workflows', label: 'Workflows', roles: [...RECRUITMENT_ADMIN_ROLES] },
+  { to: 'recruitment', label: 'Recruitment', roles: ['company_admin', 'talent_acquisition', 'employee'] },
+  { to: 'performance', label: 'Performance', roles: [...HR_OPS_ADMIN_ROLES] },
   {
     type: 'group',
     label: 'Learning and Development',
@@ -121,12 +100,12 @@ export const COMPANY_NAV_DEF: NavDefItem[] = [
       {
         to: 'learning/catalog',
         label: 'Course catalog management',
-        roles: ['company_admin', 'hr_ops', 'ld_performance', 'talent_acquisition', 'compensation_analytics'],
+        roles: [...LD_ADMIN_ROLES],
       },
       {
         to: 'learning/scores',
         label: 'Training scores',
-        roles: ['company_admin', 'hr_ops', 'ld_performance', 'talent_acquisition', 'compensation_analytics'],
+        roles: [...LD_ADMIN_ROLES],
       },
     ],
   },
@@ -163,21 +142,20 @@ export const COMPANY_NAV_DEF: NavDefItem[] = [
     roles: [...SURVEYS_ROLES],
     children: [
       { to: 'surveys?tab=surveys', label: 'Surveys', roles: [...SURVEYS_ROLES] },
-      { to: 'surveys?tab=responses', label: 'Responses & Analysis', roles: [...SURVEYS_HR_ROLES] },
-      { to: 'surveys?tab=plans', label: 'Action Plans', roles: [...SURVEYS_HR_ROLES, 'employee'] },
-      { to: 'surveys?tab=trends', label: 'Satisfaction Trends', roles: [...SURVEYS_HR_ROLES] },
+      { to: 'surveys?tab=responses', label: 'Responses & Analysis', roles: [...SURVEYS_HR_ADMIN_ROLES] },
+      { to: 'surveys?tab=plans', label: 'Action Plans', roles: [...SURVEYS_HR_ADMIN_ROLES, 'employee'] },
+      { to: 'surveys?tab=trends', label: 'Satisfaction Trends', roles: [...SURVEYS_HR_ADMIN_ROLES] },
       { to: 'surveys?tab=my', label: 'My Surveys', roles: ['employee'] },
     ],
   },
   { to: 'inbox', label: 'Inbox', roles: ALL_MEMBERS },
   { to: 'progress', label: 'Progress', roles: ALL_MEMBERS },
-  { to: 'analytics', label: 'Analytics', roles: ['company_admin', 'compensation_analytics'] },
-  { to: 'tracking', label: 'Tracking & score', roles: ALL_MEMBERS },
+  {
+    to: 'analytics',
+    label: 'Analytics',
+    roles: [...HR_NON_EMPLOYEE_ROLES],
+  },
   { to: 'certification', label: 'Certification', roles: ALL_MEMBERS },
-  { to: 'exports', label: 'Exports', roles: [...EXPORT_ROLES] },
-  { to: 'webhooks', label: 'Webhooks', roles: ['company_admin'] },
-  { to: 'scenarios', label: 'Scenarios', roles: [...SCENARIO_ROLES] },
-  { to: 'integrations/sso', label: 'SSO (stubs)', roles: ['company_admin'] },
 ]
 
 export type NavResolvedItem =
@@ -227,9 +205,4 @@ export function companyNavItems(
     }
   }
   return out
-}
-
-/** Roles that can list all users' activity logs (backend tracking list). */
-export function canListAllActivityLogs(role: string): boolean {
-  return HR_ANALYTICS.has(role)
 }

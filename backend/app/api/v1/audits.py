@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import Select, false, func, or_, select
+from sqlalchemy import Select, false, func, or_, select, true
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_company_membership_path, require_company_roles_path
@@ -55,6 +55,11 @@ def _is_hr(role: str) -> bool:
     return role in _HR
 
 
+def _can_search_any_member_audit_trail(role: str) -> bool:
+    """Only HR Operations + company admin may search and open another user's audit trail."""
+    return role in ("company_admin", "hr_ops")
+
+
 def _day_start(d: date) -> datetime:
     return datetime.combine(d, time.min, tzinfo=timezone.utc)
 
@@ -68,8 +73,8 @@ def _target_user_id(
     current_user_id: str,
     requested: str | None,
 ) -> str | None:
-    """HR may pass user_id; employees are always scoped to self. Returns None if HR has not selected anyone."""
-    if _is_hr(membership.role):
+    """HR Ops / admin may pass user_id (None = no selection yet). Everyone else is scoped to self."""
+    if _can_search_any_member_audit_trail(membership.role):
         return requested
     if requested and requested != current_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only view your own audit trail")
@@ -84,8 +89,11 @@ def search_company_members(
     q: str = Query(min_length=4, max_length=200),
 ) -> list[MemberSearchHit]:
     _, membership = ctx
-    if not _is_hr(membership.role):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HR role required to search members")
+    if not _can_search_any_member_audit_trail(membership.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only HR Operations or company admin can search members for audit trail",
+        )
     pattern = f"%{q.lower()}%"
     stmt = (
         select(User)
@@ -129,8 +137,11 @@ def list_audit_trail(
 
     aq: Select = select(ActivityLog).where(ActivityLog.company_id == company_id, ActivityLog.user_id == target)
     bq: Select = select(AuditTrailEntry).where(
-        AuditTrailEntry.company_id == company_id,
         AuditTrailEntry.user_id == target,
+        or_(
+            AuditTrailEntry.company_id == company_id,
+            AuditTrailEntry.company_id.is_(None),
+        ),
     )
 
     if category:
@@ -141,7 +152,7 @@ def list_audit_trail(
             if ALL_KNOWN_ACTIVITY_MODULES:
                 aq = aq.where(~ActivityLog.module.in_(ALL_KNOWN_ACTIVITY_MODULES))
             if ALL_KNOWN_AUDIT_ENTITY_TYPES:
-                bq = aq.where(~AuditTrailEntry.entity_type.in_(ALL_KNOWN_AUDIT_ENTITY_TYPES))
+                bq = bq.where(~AuditTrailEntry.entity_type.in_(ALL_KNOWN_AUDIT_ENTITY_TYPES))
         else:
             mods = cat_def.activity_modules
             ents = cat_def.audit_entity_types
@@ -275,6 +286,11 @@ def policy_acknowledgment_detail(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_HR))],
     db: Annotated[Session, Depends(get_db)],
     q: str | None = Query(default=None, max_length=200),
+    status: str = Query(
+        default="all",
+        description="Filter by acknowledgment: all | acknowledged | pending",
+        pattern="^(all|acknowledged|pending)$",
+    ),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> PolicyAckDetailResponse:
@@ -285,20 +301,28 @@ def policy_acknowledgment_detail(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy not found")
 
     qs = (q or "").strip()
-    if len(qs) < 4:
-        return PolicyAckDetailResponse(items=[], total=0, offset=offset, limit=limit)
+    if len(qs) >= 4:
+        pattern = f"%{qs.lower()}%"
+        user_filter = or_(
+            func.lower(User.email).like(pattern),
+            func.lower(User.name).like(pattern),
+            User.id.contains(qs),
+        )
+    else:
+        user_filter = true()
 
-    pattern = f"%{qs.lower()}%"
-    user_filter = or_(
-        func.lower(User.email).like(pattern),
-        func.lower(User.name).like(pattern),
-        User.id.contains(qs),
-    )
-    base_where = (
+    membership_filters = (
         CompanyMembership.company_id == company_id,
         CompanyMembership.status == "active",
         user_filter,
     )
+    ack_filters = []
+    if status == "acknowledged":
+        ack_filters.append(PolicyAcknowledgment.id.isnot(None))
+    elif status == "pending":
+        ack_filters.append(PolicyAcknowledgment.id.is_(None))
+
+    base_where = (*membership_filters, *ack_filters)
 
     count_stmt = (
         select(func.count())
@@ -443,6 +467,7 @@ def download_policy(
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
     db: Annotated[Session, Depends(get_db)],
 ) -> FileResponse:
+    user, membership = ctx
     row = db.execute(
         select(PolicyDocument).where(PolicyDocument.id == policy_id, PolicyDocument.company_id == company_id)
     ).scalar_one_or_none()
@@ -451,6 +476,18 @@ def download_policy(
     path = _upload_root() / row.stored_path
     if not path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File missing on server")
+    log_tracked_hr_action(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        role=membership.role,
+        module="compliance",
+        action_type="policy_downloaded",
+        action_detail=row.title[:250],
+        entity_type="policy_document",
+        entity_id=row.id,
+    )
+    db.commit()
     return FileResponse(
         path=str(path),
         filename=row.file_name,

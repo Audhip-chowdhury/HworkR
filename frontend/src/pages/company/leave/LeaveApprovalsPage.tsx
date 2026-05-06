@@ -4,13 +4,7 @@ import { useAuth } from '../../../auth/AuthContext'
 import { decideLeaveRequest, listLeaveRequests, type LeaveRequestRow } from '../../../api/leaveApi'
 import styles from '../CompanyWorkspacePage.module.css'
 
-const HR_ROLES = new Set([
-  'company_admin',
-  'hr_ops',
-  'talent_acquisition',
-  'ld_performance',
-  'compensation_analytics',
-])
+const HR_ROLES = new Set(['hr_ops'])
 
 export function LeaveApprovalsPage() {
   const { companyId = '' } = useParams()
@@ -76,7 +70,7 @@ export function LeaveApprovalsPage() {
     return (
       <div className={styles.org}>
         <section className={styles.card}>
-          <p className={styles.muted}>This page is only available for HR and leadership roles.</p>
+          <p className={styles.muted}>This page is only available for HR Ops specialists.</p>
         </section>
       </div>
     )

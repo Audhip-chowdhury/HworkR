@@ -44,6 +44,9 @@ router = APIRouter(prefix="/companies/{company_id}", tags=["hr-ops"])
 
 _HR = frozenset({"company_admin", "hr_ops"})
 
+# Leave approvals + cross-employee leave balances are HR Ops specialist only.
+_LEAVE_ORG = frozenset({"hr_ops"})
+
 # Default annual allocations (days) when no policy row overrides
 _DEFAULT_LEAVE_ALLOCATIONS: dict[str, float] = {
     "paid": 20.0,
@@ -171,9 +174,14 @@ def list_leave_requests(
             return []
         q = q.where(LeaveRequest.employee_id == emp.id)
     elif employee_id:
-        if membership.role not in _HR:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HR role required to filter by employee")
+        if membership.role not in _LEAVE_ORG:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HR Ops role required to filter by employee")
         q = q.where(LeaveRequest.employee_id == employee_id)
+    elif membership.role not in _LEAVE_ORG:
+        emp = get_employee_for_user(db, company_id, user.id)
+        if emp is None:
+            return []
+        q = q.where(LeaveRequest.employee_id == emp.id)
     rows = list(db.execute(q.order_by(LeaveRequest.created_at.desc())).scalars().all())
     return [_enrich_leave_request(db, company_id, row) for row in rows]
 
@@ -202,6 +210,13 @@ def leave_year_summary(
     if for_employee_id:
         if membership.role == "employee":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot query other employees")
+        if membership.role not in _LEAVE_ORG:
+            me = get_employee_for_user(db, company_id, user.id)
+            if me is None or me.id != for_employee_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not allowed to load leave summary for other employees",
+                )
         emp = get_employee_by_id(db, company_id, for_employee_id)
         if emp is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
@@ -313,7 +328,7 @@ def decide_leave_request(
     company_id: str,
     request_id: str,
     body: LeaveRequestApprove,
-    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_HR))],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path(_LEAVE_ORG))],
     db: Annotated[Session, Depends(get_db)],
 ) -> LeaveRequest:
     user, membership = ctx
@@ -379,9 +394,14 @@ def list_leave_balances(
             return []
         q = q.where(LeaveBalance.employee_id == emp.id)
     elif employee_id:
-        if membership.role not in _HR:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HR role required")
+        if membership.role not in _LEAVE_ORG:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HR Ops role required")
         q = q.where(LeaveBalance.employee_id == employee_id)
+    elif membership.role not in _LEAVE_ORG:
+        emp = get_employee_for_user(db, company_id, user.id)
+        if emp is None:
+            return []
+        q = q.where(LeaveBalance.employee_id == emp.id)
     if year is not None:
         q = q.where(LeaveBalance.year == year)
     return list(db.execute(q).scalars().all())

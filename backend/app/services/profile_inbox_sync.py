@@ -1,4 +1,4 @@
-"""Granular inbox tasks for profile fields (phone, address, emergency) — one task each."""
+"""Granular inbox tasks for profile fields (including DOB/email/contact details)."""
 
 from typing import Any
 
@@ -16,10 +16,24 @@ LEGACY_PROFILE_TASK_TYPE = "profile_incomplete"
 
 # One open task per reminder (titles match product copy).
 PROFILE_REMINDERS: tuple[tuple[str, str, str], ...] = (
+    ("profile_add_dob", "Add date of birth", "dob"),
+    ("profile_add_personal_email", "Add personal email", "personalEmail"),
     ("profile_add_phone", "Add primary contact", "phone"),
     ("profile_add_address", "Add address", "address"),
     ("profile_add_emergency", "Add emergency contact", "emergency"),
 )
+
+
+def _needs_dob(pi: dict[str, Any] | None) -> bool:
+    if not pi:
+        return True
+    return not str(pi.get("dob") or "").strip()
+
+
+def _needs_personal_email(pi: dict[str, Any] | None) -> bool:
+    if not pi:
+        return True
+    return not str(pi.get("personalEmail") or "").strip()
 
 
 def _needs_phone(pi: dict[str, Any] | None) -> bool:
@@ -96,9 +110,11 @@ def sync_profile_inbox_tasks(db: Session, employee: Employee) -> None:
 
     pi = employee.personal_info_json or {}
     checks: list[tuple[str, str, str, bool]] = [
-        (PROFILE_REMINDERS[0][0], PROFILE_REMINDERS[0][1], PROFILE_REMINDERS[0][2], _needs_phone(pi)),
-        (PROFILE_REMINDERS[1][0], PROFILE_REMINDERS[1][1], PROFILE_REMINDERS[1][2], _needs_address(pi)),
-        (PROFILE_REMINDERS[2][0], PROFILE_REMINDERS[2][1], PROFILE_REMINDERS[2][2], _needs_emergency(pi)),
+        (PROFILE_REMINDERS[0][0], PROFILE_REMINDERS[0][1], PROFILE_REMINDERS[0][2], _needs_dob(pi)),
+        (PROFILE_REMINDERS[1][0], PROFILE_REMINDERS[1][1], PROFILE_REMINDERS[1][2], _needs_personal_email(pi)),
+        (PROFILE_REMINDERS[2][0], PROFILE_REMINDERS[2][1], PROFILE_REMINDERS[2][2], _needs_phone(pi)),
+        (PROFILE_REMINDERS[3][0], PROFILE_REMINDERS[3][1], PROFILE_REMINDERS[3][2], _needs_address(pi)),
+        (PROFILE_REMINDERS[4][0], PROFILE_REMINDERS[4][1], PROFILE_REMINDERS[4][2], _needs_emergency(pi)),
     ]
 
     for task_type, title, focus, needs in checks:

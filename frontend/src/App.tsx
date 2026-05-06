@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext'
 import { CertificationPage } from './pages/company/certification/CertificationPage'
 import { CompanyLayout } from './pages/company/CompanyLayout'
+import { CompanyAuthorizedOutlet } from './pages/company/CompanyAuthorizedOutlet'
 import { CompanyOrgPage } from './pages/company/CompanyOrgPage'
 import { ExportsPage } from './pages/company/exports/ExportsPage'
 import { RecruitmentPage } from './pages/company/recruitment/RecruitmentPage'
@@ -33,8 +34,7 @@ import { LeaveHolidaysPage } from './pages/company/leave/LeaveHolidaysPage'
 import { LeavePoliciesPage } from './pages/company/leave/LeavePoliciesPage'
 import { LeaveRequestPage } from './pages/company/leave/LeaveRequestPage'
 import { AuditTrailPage } from './pages/company/audits/AuditTrailPage'
-import { PolicyDocumentsPage } from './pages/company/audits/PolicyDocumentsPage'
-import { PolicyPublishPage } from './pages/company/audits/PolicyPublishPage'
+import { AuditsPoliciesPage } from './pages/company/audits/AuditsPoliciesPage'
 import { EmployeeDetailPage } from './pages/company/employees/EmployeeDetailPage'
 import { MembersPage } from './pages/company/members/MembersPage'
 import { HrOpsPage } from './pages/company/hr-ops/HrOpsPage'
@@ -81,6 +81,11 @@ function LeaveIndexRedirect() {
 function AuditsIndexRedirect() {
   const { companyId = '' } = useParams()
   return <Navigate to={`/company/${companyId}/audits/trail`} replace />
+}
+
+function AuditsPublishLegacyRedirect() {
+  const { companyId = '' } = useParams()
+  return <Navigate to={`/company/${companyId}/audits/policies?tab=publish`} replace />
 }
 
 function PlatformAdminRoute({ children }: { children: React.ReactNode }) {
@@ -135,6 +140,7 @@ export default function App() {
           </ProtectedRoute>
         }
       >
+        <Route element={<CompanyAuthorizedOutlet />}>
         <Route index element={<WorkspaceDashboardPage />} />
         <Route path="org" element={<CompanyOrgPage />} />
         <Route path="my-profile" element={<MyProfilePage />} />
@@ -152,8 +158,8 @@ export default function App() {
         <Route path="leave/balances" element={<LeaveBalancesPage />} />
         <Route path="leave" element={<LeaveIndexRedirect />} />
         <Route path="audits/trail" element={<AuditTrailPage />} />
-        <Route path="audits/policies/publish" element={<PolicyPublishPage />} />
-        <Route path="audits/policies" element={<PolicyDocumentsPage />} />
+        <Route path="audits/policies/publish" element={<AuditsPublishLegacyRedirect />} />
+        <Route path="audits/policies" element={<AuditsPoliciesPage />} />
         <Route path="audits" element={<AuditsIndexRedirect />} />
         <Route path="employees" element={<EmployeesIndexRedirect />} />
         <Route path="employees/:employeeId" element={<EmployeeDetailPage />} />
@@ -187,6 +193,7 @@ export default function App() {
         <Route path="webhooks" element={<WebhooksPage />} />
         <Route path="scenarios" element={<ScenariosPage />} />
         <Route path="integrations/sso" element={<SsoPage />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

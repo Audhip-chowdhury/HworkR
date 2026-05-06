@@ -20,7 +20,7 @@ export function CompanyLayout() {
   const after = location.pathname.startsWith(prefix)
     ? location.pathname.slice(prefix.length)
     : ''
-  const { title, subtitle } = companySectionTitle(after)
+  const { title, subtitle } = companySectionTitle(after, location.search)
 
   if (!entry) {
     return (
@@ -65,7 +65,6 @@ export function CompanyLayout() {
     const preserveQuery =
       location.pathname.includes('/employees/') ||
       location.pathname.includes('/leave/') ||
-      location.pathname.includes('/audits/') ||
       location.pathname.includes('/learning/')
     const suffix = preserveQuery ? location.search : ''
     return raw.map((item) => {
@@ -74,7 +73,6 @@ export function CompanyLayout() {
           item.parentTo &&
           (item.parentTo.includes('/employees/') ||
             item.parentTo.includes('/leave/') ||
-            item.parentTo.includes('/audits/') ||
             item.parentTo.includes('/learning/'))
             ? `${item.parentTo.split('?')[0]}${suffix}`
             : item.parentTo
@@ -86,7 +84,6 @@ export function CompanyLayout() {
             to:
               c.to.includes('/employees/') ||
               c.to.includes('/leave/') ||
-              c.to.includes('/audits/') ||
               c.to.includes('/learning/')
                 ? `${c.to.split('?')[0]}${suffix}`
                 : c.to,
@@ -106,6 +103,7 @@ export function CompanyLayout() {
         companyName={displayCompany}
         navItems={navItems}
         topbarExtra={<NotificationsPanel companyId={companyId} />}
+        workspaceContext={{ companyId, role: entry.membership.role }}
       >
         <Outlet />
       </AppShell>

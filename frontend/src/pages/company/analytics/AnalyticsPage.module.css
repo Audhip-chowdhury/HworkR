@@ -1,0 +1,412 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  min-width: 0;
+}
+
+.pageH2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.intro {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  max-width: 52rem;
+}
+
+.sectionTitle {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.sectionHint {
+  margin: 0 0 0.65rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+/* ─── Magazine layout ──────────────────────────────────────────── */
+
+/* Top KPI number strip — equal cards, text only */
+.kpiStrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+/* Two-column magazine: narrow sidebar + wide main */
+.magazine {
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  gap: 0.55rem;
+  align-items: start;
+  margin-bottom: 0.55rem;
+}
+
+@media (max-width: 900px) {
+  .magazine {
+    grid-template-columns: 1fr;
+  }
+}
+
+.magazineLeft,
+.magazineRight {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+/* Full-width tiles that sit below the magazine columns */
+.fullRow {
+  margin-bottom: 0.55rem;
+}
+
+/* Trend charts: two equal columns side-by-side */
+.trendPair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+  margin-bottom: 0.55rem;
+}
+
+@media (max-width: 760px) {
+  .trendPair {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Tile shell ───────────────────────────────────────────────── */
+
+.tile {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+/* Chart tile variants — height follows SVG content, not the container */
+.tileChart,
+.tileHBar,
+.tileFunnel,
+.tileVizTall,
+.tileLeave {
+  /* no imposed min-height — SVG's own min-height in AnalyticsCharts.module.css drives it */
+}
+
+.tileChart > :not(.tileTitle):not(.tileSub),
+.tileHBar > :not(.tileTitle):not(.tileSub),
+.tileFunnel > :not(.tileTitle):not(.tileSub) {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Leave pair ───────────────────────────────────────────────── */
+
+.leaveChartPair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.3rem 0.55rem;
+  min-width: 0;
+}
+
+@media (min-width: 720px) {
+  .leaveChartPair {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.leaveSubchart {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.vizSubheading {
+  margin: 0.05rem 0 0;
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+/* ─── Payroll ──────────────────────────────────────────────────── */
+
+.payrollBarRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.4rem 0.65rem;
+  margin: 0.25rem 0 0.4rem;
+  width: 100%;
+}
+
+/* ─── Recruit KPIs ─────────────────────────────────────────────── */
+
+.recruitKpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.4rem 0.55rem;
+  margin-top: 0.05rem;
+}
+
+@media (max-width: 640px) {
+  .recruitKpiGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.recruitKpiCell {
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-page) 88%, var(--color-primary) 4%);
+  border: 1px solid color-mix(in srgb, var(--border) 85%, var(--color-primary) 6%);
+}
+
+.recruitKpiLabel {
+  margin: 0 0 0.2rem;
+  font-size: 0.64rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
+.recruitKpiValue {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Text elements ────────────────────────────────────────────── */
+
+.tileTitle {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.tileValue {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  line-height: 1.1;
+}
+
+.tileSub {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* ─── Gradient bars (unused but kept for compat) ───────────────── */
+
+.barTone0 {
+  background: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--color-primary) 78%, white) 0%,
+    color-mix(in srgb, var(--color-primary) 52%, var(--color-secondary)) 100%
+  );
+}
+.barTone1 {
+  background: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--color-secondary) 72%, #a8e6cf) 0%,
+    color-mix(in srgb, var(--color-secondary) 48%, var(--color-primary)) 100%
+  );
+}
+.barTone2 {
+  background: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--color-primary) 55%, #aed6f1) 0%,
+    color-mix(in srgb, var(--color-primary) 42%, var(--color-accent)) 100%
+  );
+}
+
+/* ─── Tables ───────────────────────────────────────────────────── */
+
+.tableWrap {
+  overflow: auto;
+  max-height: 220px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.table th,
+.table td {
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+}
+
+/* ─── Reports & exports ────────────────────────────────────────── */
+
+.exportGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.65rem;
+}
+
+.reportLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .reportLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.reportChecks {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 340px;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.reportCat {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--color-primary);
+}
+
+.checkLine {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.85rem;
+  margin-bottom: 0.35rem;
+  color: var(--text-primary);
+}
+
+.checkLine input {
+  margin-top: 0.2rem;
+}
+
+.previewBox {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-card) 92%, var(--border));
+  padding: 0.65rem 0.75rem;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.reportActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.mutedNote {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.toolsTabList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 92%, var(--color-primary) 6%);
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toolsTab {
+  margin: 0;
+  padding: 0;
+}
+
+.toolsTabBtn {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.55rem 1rem 0.65rem;
+  color: var(--text-muted);
+  border-radius: 10px 10px 0 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.toolsTabBtn:hover {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+}
+
+.toolsTabBtnActive {
+  color: var(--color-primary);
+  border-bottom-color: color-mix(in srgb, var(--color-secondary) 75%, var(--color-primary));
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--bg-card));
+}
+
+.toolsTabPanel {
+  padding-top: 1.1rem;
+}
+
+.toolsTabPanel:focus {
+  outline: none;
+}

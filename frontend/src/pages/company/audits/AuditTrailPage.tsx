@@ -9,7 +9,7 @@ import {
   type MemberSearchHit,
   type TrailEntry,
 } from '../../../api/auditsApi'
-import { canListAllActivityLogs } from '../../../company/navConfig'
+import { canListAllActivityLogs } from '../../../company/companyAccess'
 import styles from '../CompanyWorkspacePage.module.css'
 import auditStyles from './Audits.module.css'
 

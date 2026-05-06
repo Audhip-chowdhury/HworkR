@@ -390,7 +390,7 @@ def test_pay_run_department_scopes_payslip_employees():
 
         r = client.get("/api/v1/auth/me", headers=_hdr(tok))
         assert r.status_code == 200, r.text
-        _set_membership_role(cid, r.json()["id"], "hr_ops")
+        _set_membership_role(cid, r.json()["id"], "compensation_analytics")
 
         r = client.post(
             f"/api/v1/companies/{cid}/payroll/payslips",
@@ -583,7 +583,7 @@ def test_review_cycle_proposals_apply_and_off_cycle_payrun():
         r = client.get("/api/v1/auth/me", headers=_hdr(tok))
         assert r.status_code == 200
         admin_uid = r.json()["id"]
-        _set_membership_role(company_id, admin_uid, "hr_ops")
+        _set_membership_role(company_id, admin_uid, "compensation_analytics")
 
         r = client.post(
             f"/api/v1/companies/{company_id}/payroll/payslips",
@@ -710,3 +710,108 @@ def test_works_with_peers_same_manager_same_grade():
         assert len(peers) == 1
         assert peers[0]["employee_code"] == "P2"
         assert peers[0]["grade"] == 77
+
+
+def test_leave_approvals_and_cross_employee_balances_are_hr_ops_only():
+    from app.main import app
+
+    with TestClient(app) as client:
+        tok, cid = _register_and_company(client)
+        suf = uuid.uuid4().hex[:8]
+        r = client.post(
+            f"/api/v1/companies/{cid}/employees",
+            json={"employee_code": f"LV{suf}", "status": "active"},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+        emp_id = r.json()["id"]
+
+        # Company admin can create a request for an employee, but cannot approve it.
+        r = client.post(
+            f"/api/v1/companies/{cid}/leave/requests",
+            json={
+                "employee_id": emp_id,
+                "type": "paid",
+                "start_date": "2026-06-10",
+                "end_date": "2026-06-12",
+                "reason": "Family event",
+            },
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 201, r.text
+        req_id = r.json()["id"]
+
+        r = client.patch(
+            f"/api/v1/companies/{cid}/leave/requests/{req_id}/decision",
+            json={"status": "approved"},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 403
+
+        # Company admin cannot read other employees' leave summaries.
+        r = client.get(
+            f"/api/v1/companies/{cid}/leave/summary",
+            params={"year": 2026, "for_employee_id": emp_id},
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 403
+
+
+def test_progress_dashboard_counts_compensation_actions():
+    from app.main import app
+
+    with TestClient(app) as client:
+        tok, cid = _register_and_company(client)
+        r = client.post(
+            f"/api/v1/companies/{cid}/payroll/grade-bands",
+            headers=_hdr(tok),
+            json={
+                "band_code": "L7",
+                "min_annual": 900000,
+                "mid_annual": 1000000,
+                "max_annual": 1200000,
+                "effective_from": "2026-01-01",
+                "org_position_grade_min": 7,
+            },
+        )
+        assert r.status_code == 201, r.text
+
+        r = client.get(
+            f"/api/v1/companies/{cid}/certification/progress/me/dashboard",
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 200, r.text
+        modules = {m["module"]: m for m in r.json()["module_breakdown"]}
+        assert "compensation" in modules
+        assert modules["compensation"]["action_count"] >= 1
+
+
+def test_progress_dashboard_counts_policy_download_as_compliance_action():
+    from app.main import app
+
+    with TestClient(app) as client:
+        tok, cid = _register_and_company(client)
+        files = {"file": ("policy.txt", b"policy body", "text/plain")}
+        data = {"title": "Code of conduct", "description": "Policy test"}
+        r = client.post(
+            f"/api/v1/companies/{cid}/audits/policies",
+            headers=_hdr(tok),
+            data=data,
+            files=files,
+        )
+        assert r.status_code == 200, r.text
+        pid = r.json()["id"]
+
+        r = client.get(
+            f"/api/v1/companies/{cid}/audits/policies/{pid}/download",
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 200, r.text
+
+        r = client.get(
+            f"/api/v1/companies/{cid}/certification/progress/me/dashboard",
+            headers=_hdr(tok),
+        )
+        assert r.status_code == 200, r.text
+        modules = {m["module"]: m for m in r.json()["module_breakdown"]}
+        assert modules["compliance"]["action_count"] >= 2

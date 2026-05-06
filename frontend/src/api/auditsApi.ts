@@ -86,15 +86,18 @@ export function listPolicies(companyId: string) {
 
 const DEFAULT_ACK_PAGE = 50
 
+export type PolicyAckStatusFilter = 'all' | 'acknowledged' | 'pending'
+
 export function getPolicyAcknowledgmentDetail(
   companyId: string,
   policyId: string,
-  params: { q: string; offset?: number; limit?: number },
+  params: { q: string; offset?: number; limit?: number; status?: PolicyAckStatusFilter },
 ) {
   const p = new URLSearchParams()
   p.set('q', params.q)
   p.set('offset', String(params.offset ?? 0))
   p.set('limit', String(params.limit ?? DEFAULT_ACK_PAGE))
+  p.set('status', params.status ?? 'all')
   return apiFetch<PolicyAckDetailResponse>(
     companyPath(companyId, `/audits/policies/${policyId}/acknowledgment-detail?${p.toString()}`),
   )

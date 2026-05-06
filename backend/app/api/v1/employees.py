@@ -32,6 +32,7 @@ from app.schemas.employees import (
     WorksWithPeerOut,
 )
 from app.services.activity_tracking import log_tracked_hr_action
+from app.services.scoring_engine.employees import profile_completeness_factors
 from app.services.audit import write_audit
 from app.services.employee_detail import (
     display_name_and_email,
@@ -49,6 +50,8 @@ from app.services.employee_document_sync import (
     sync_document_inbox_tasks,
 )
 from app.services.profile_inbox_sync import (
+    _needs_dob,
+    _needs_personal_email,
     _needs_address,
     _needs_emergency,
     _needs_phone,
@@ -71,23 +74,7 @@ _PRIMARY_SELF_SERVICE = frozenset({"photo", "gov_id", "offer_letter"})
 
 
 def _profile_quality_factors(personal_info_json: dict | None) -> dict[str, float]:
-    info = personal_info_json or {}
-    phone = str(info.get("phone") or "").strip()
-    address = str(info.get("address") or "").strip()
-    emergency = info.get("emergencyContacts")
-    has_emergency = isinstance(emergency, list) and len(emergency) > 0
-    completeness = 60.0
-    if phone:
-        completeness += 15.0
-    if address:
-        completeness += 15.0
-    if has_emergency:
-        completeness += 10.0
-    return {
-        "completeness": min(100.0, completeness),
-        "accuracy": 90.0 if phone else 82.0,
-        "process_adherence": 92.0 if has_emergency else 85.0,
-    }
+    return profile_completeness_factors(personal_info_json)
 
 
 def _checklist_completion_rate(checklist: dict | None) -> float:
@@ -533,6 +520,24 @@ def update_my_employee_record(
                 role=role,
                 employee_id=emp.id,
                 field="phone",
+            )
+        if _needs_dob(old_pi) and not _needs_dob(new_pi):
+            _log_profile_reminder_completed(
+                db,
+                company_id=company_id,
+                user_id=user.id,
+                role=role,
+                employee_id=emp.id,
+                field="dob",
+            )
+        if _needs_personal_email(old_pi) and not _needs_personal_email(new_pi):
+            _log_profile_reminder_completed(
+                db,
+                company_id=company_id,
+                user_id=user.id,
+                role=role,
+                employee_id=emp.id,
+                field="personal_email",
             )
         if _needs_address(old_pi) and not _needs_address(new_pi):
             _log_profile_reminder_completed(

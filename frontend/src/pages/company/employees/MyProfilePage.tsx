@@ -14,6 +14,8 @@ import styles from '../CompanyWorkspacePage.module.css'
 type EmergencyRow = { name: string; phone: string; relation: string }
 
 type ProfileForm = {
+  dob: string
+  personalEmail: string
   phone: string
   address: string
   emergencyContacts: EmergencyRow[]
@@ -63,6 +65,8 @@ function hydrateForm(data: Employee): ProfileForm {
   const info = (data.personal_info_json ?? {}) as Record<string, unknown>
   const ec = parseEmergencyContacts(info)
   return {
+    dob: String(info.dob ?? '').slice(0, 10),
+    personalEmail: String(info.personalEmail ?? ''),
     phone: String(info.phone ?? ''),
     address: String(info.address ?? ''),
     emergencyContacts: ec.length > 0 ? ec : [{ ...EMPTY_CONTACT }],
@@ -82,6 +86,8 @@ export function MyProfilePage() {
   const [docLoading, setDocLoading] = useState(false)
   const [uploading, setUploading] = useState<string | null>(null)
   const [form, setForm] = useState<ProfileForm>({
+    dob: '',
+    personalEmail: '',
     phone: '',
     address: '',
     emergencyContacts: [{ ...EMPTY_CONTACT }],
@@ -150,6 +156,8 @@ export function MyProfilePage() {
       const next = await patchMyEmployee(companyId, {
         personal_info_json: {
           ...(employee?.personal_info_json ?? {}),
+          dob: form.dob.trim(),
+          personalEmail: form.personalEmail.trim(),
           phone: form.phone.trim(),
           address: form.address.trim(),
           emergencyContacts: contacts,
@@ -230,6 +238,24 @@ export function MyProfilePage() {
           </div>
 
           <div className={styles.positionForm}>
+            <label className={styles.labelBlock} id="profile-dob">
+              Date of birth
+              <input
+                className={styles.input}
+                type="date"
+                value={form.dob}
+                onChange={(e) => setForm((p) => ({ ...p, dob: e.target.value }))}
+              />
+            </label>
+            <label className={styles.labelBlock} id="profile-personalEmail">
+              Personal email
+              <input
+                className={styles.input}
+                type="email"
+                value={form.personalEmail}
+                onChange={(e) => setForm((p) => ({ ...p, personalEmail: e.target.value }))}
+              />
+            </label>
             <label className={styles.labelBlock} id="profile-phone">
               Phone (contact)
               <input

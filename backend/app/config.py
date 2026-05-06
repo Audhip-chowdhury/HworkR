@@ -12,7 +12,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days for dev
     database_url: str = "sqlite:///./hworkr.db"
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:8020,http://127.0.0.1:8020"
+    )
     upload_dir: Path = Path("./uploads")
     max_upload_bytes: int = 2 * 1024 * 1024  # 2 MiB — company logos
     max_employee_document_bytes: int = 5 * 1024 * 1024  # 5 MiB — ID / photo / offer PDF

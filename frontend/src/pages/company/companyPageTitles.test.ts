@@ -24,4 +24,13 @@ describe('companySectionTitle', () => {
     const t = companySectionTitle('recruitment/tracking')
     expect(t.title).toBe('Candidate activity')
   })
+
+  it('maps audits policy library vs publish from query tab', () => {
+    const library = companySectionTitle('audits/policies', '')
+    expect(library.title).toBe('Policy library')
+    const libraryExplicit = companySectionTitle('audits/policies', '?tab=library')
+    expect(libraryExplicit.title).toBe('Policy library')
+    const publish = companySectionTitle('audits/policies', '?tab=publish')
+    expect(publish.title).toBe('Publish policy')
+  })
 })

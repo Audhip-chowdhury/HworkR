@@ -78,6 +78,22 @@
   padding: 0.45rem 0.65rem;
   border: 1px solid var(--border);
   border-radius: 8px;
+  /* Use background-color only — `background` shorthand clears select chevrons from index.css */
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+/* When `.input` is applied to a <select>, keep the unified dropdown look
+   defined globally in index.css: rounded corners, inset border colour, and
+   enough right-padding to leave room for the chevron. */
+select.input {
+  padding: 0.5rem 2.55rem 0.5rem 0.75rem;
+  border-radius: 10px;
+  border-color: color-mix(in srgb, var(--color-primary) 22%, var(--border));
 }
 
 /* SimCash validation highlight (payroll dev toggle) */
@@ -177,6 +193,184 @@
   font-size: 0.875rem;
   color: var(--text-muted);
   line-height: 1.5;
+}
+
+/* Merit / increment: stepped layout */
+.meritFlow {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+  margin-top: 0.25rem;
+}
+
+.meritTabBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.meritTabBtn {
+  padding: 0.4rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.meritTabBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.meritTabBtnActive {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.meritTabBtnActive:hover {
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.meritTabPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+.meritBlock {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem 1.1rem;
+  background: var(--bg-card);
+  scroll-margin-top: 0.75rem;
+}
+
+.meritBlockTint {
+  background: color-mix(in srgb, var(--color-primary) 3.5%, var(--bg-card));
+}
+
+.meritBlockHeader {
+  margin: 0 0 0.55rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+}
+
+.meritBlockTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin: 0;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+}
+
+.meritBlockSub {
+  margin: 0 0 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 52rem;
+}
+
+.meritEmpty {
+  text-align: center;
+  padding: 1.1rem 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--border) 20%, transparent);
+  margin: 0;
+}
+
+.meritToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.meritStatePill {
+  display: inline-block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--border) 12%, var(--bg-card));
+}
+
+.meritBudgetGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0.4rem 0 0.25rem;
+}
+
+.meritBudgetItem {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.meritBudgetValue {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 0.15rem;
+  letter-spacing: 0.01em;
+}
+
+.meritCallout {
+  margin: 0.65rem 0 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, #b45309 12%, transparent);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.meritApplyPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 32%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 4.5%, var(--bg-card));
+}
+
+.meritApplyText {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 44rem;
+}
+
+.meritInnerCard {
+  margin-top: 0.5rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
 }
 
 .roleRow {
@@ -945,6 +1139,46 @@
 .notificationsWrap {
   position: relative;
   flex-shrink: 0;
+}
+
+/* Icon-only notifications trigger (top bar) */
+.notificationsBellBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 0.4rem 0.45rem;
+  min-width: 2.45rem;
+  min-height: 2.35rem;
+}
+
+.notificationsBellBtn svg {
+  flex-shrink: 0;
+  color: var(--color-primary);
+  opacity: 0.9;
+}
+
+.notificationsBellBtn:hover svg {
+  opacity: 1;
+}
+
+.notificationsBellBadge {
+  position: absolute;
+  top: 0.1rem;
+  right: 0.08rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.28rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.05rem;
+  text-align: center;
+  color: #fff;
+  background: var(--color-error);
+  border-radius: 999px;
+  border: 2px solid var(--bg-card);
+  box-sizing: content-box;
+  pointer-events: none;
 }
 
 .notificationsPanel {
