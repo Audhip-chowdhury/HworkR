@@ -50,7 +50,7 @@ def log_tracked_hr_action(
     if critical_failure:
         ctx["critical_failure"] = True
 
-    return log_activity(
+    row = log_activity(
         db,
         company_id=company_id,
         user_id=user_id,
@@ -66,3 +66,7 @@ def log_tracked_hr_action(
         started_at=reference_started_at,
         completed_at=now,
     )
+    from app.services.auto_certification import check_and_auto_issue  # noqa: PLC0415
+
+    check_and_auto_issue(db, company_id, user_id)
+    return row

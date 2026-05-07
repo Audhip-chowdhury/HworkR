@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +22,7 @@ from app.models.org import Department, JobCatalogEntry, Location
 from app.models.org_role import DepartmentOrgRole, OrgRole
 from app.models.position import Position
 from app.models.user import User
+from app.config import settings
 from app.schemas.company import (
     CompanyOut,
     CompanyUpdate,
@@ -29,6 +30,7 @@ from app.schemas.company import (
     MemberRoleUpdate,
     MembershipOut,
 )
+from app.services.logo_upload import save_company_logo
 from app.schemas.position import PositionCreate, PositionOut, PositionUpdate
 from app.schemas.org import (
     DepartmentCreate,
@@ -84,6 +86,41 @@ def update_company(
         entity_id=company_id,
         action="update",
         changes_json=data,
+    )
+    db.commit()
+    db.refresh(c)
+    return c
+
+
+@router.post("/{company_id}/logo", response_model=CompanyOut)
+async def upload_company_logo(
+    company_id: str,
+    logo: Annotated[UploadFile, File()],
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_admin_path)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Company:
+    """Persist logo under ``uploads/logos`` and set ``company.logo_url``."""
+    user, _ = ctx
+    r = db.execute(select(Company).where(Company.id == company_id))
+    c = r.scalar_one_or_none()
+    if c is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+    if logo.filename is None or not logo.filename.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Logo file required")
+    logo_url = await save_company_logo(
+        logo,
+        upload_root=settings.upload_dir,
+        max_bytes=settings.max_upload_bytes,
+    )
+    c.logo_url = logo_url
+    write_audit(
+        db,
+        company_id=company_id,
+        user_id=user.id,
+        entity_type="company",
+        entity_id=company_id,
+        action="upload_logo",
+        changes_json={"logo_url": logo_url},
     )
     db.commit()
     db.refresh(c)
@@ -163,6 +200,10 @@ def invite_member(
     )
     db.commit()
     db.refresh(m)
+    from app.services.cohort_assignment import enroll_member_in_cohort  # noqa: PLC0415
+
+    enroll_member_in_cohort(db, company_id, target.id, body.role)
+    db.commit()
     return m
 
 
@@ -199,6 +240,10 @@ def update_member_role(
     )
     db.commit()
     db.refresh(m)
+    from app.services.cohort_assignment import reenroll_member_after_role_change  # noqa: PLC0415
+
+    reenroll_member_after_role_change(db, company_id, target_user_id, body.role)
+    db.commit()
     return m
 
 

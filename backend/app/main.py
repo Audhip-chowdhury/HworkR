@@ -14,6 +14,7 @@ from app.api.v1 import (
     auth,
     certification,
     company_registration,
+    public_certificates,
     compensation_engagement,
     compensation_review,
     employees,
@@ -64,6 +65,10 @@ _upload_root.mkdir(parents=True, exist_ok=True)
 (_upload_root / "logos").mkdir(exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(_upload_root)), name="uploads")
 
+_branding_assets = Path(__file__).resolve().parent / "assets" / "branding"
+if _branding_assets.is_dir():
+    app.mount("/branding-assets", StaticFiles(directory=str(_branding_assets)), name="branding_assets")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
@@ -86,6 +91,7 @@ v1.include_router(compensation_engagement.router)
 v1.include_router(compensation_review.router)
 v1.include_router(tracking.router)
 v1.include_router(certification.router)
+v1.include_router(public_certificates.router)
 v1.include_router(analytics.router)
 v1.include_router(recruitment.router)
 v1.include_router(recruitment_public.router)

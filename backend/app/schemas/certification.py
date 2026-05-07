@@ -64,8 +64,20 @@ class CertificateOut(BaseModel):
     breakdown_json: dict[str, Any] | None
     issued_at: datetime
     verification_id: str
+    approval_status: str = "pending_approval"
 
     model_config = {"from_attributes": True}
+
+
+class PublicCertificateOut(BaseModel):
+    verification_id: str
+    approval_status: str
+    recipient_name: str
+    company_name: str
+    track_name: str
+    level: str
+    score: float
+    issued_at: datetime
 
 
 class ProgressDimensionOut(BaseModel):
@@ -91,6 +103,12 @@ class ProgressRecentActionOut(BaseModel):
     score: float | None
 
 
+class ModuleTaskProgressOut(BaseModel):
+    module: str
+    required: int
+    completed: int
+
+
 class CertificationProgressDashboardOut(BaseModel):
     overall_score: float | None
     action_count: int
@@ -99,6 +117,7 @@ class CertificationProgressDashboardOut(BaseModel):
     required_actions_total: int
     required_actions_completed: int
     missing_required_actions: list[str]
+    module_task_progress: list[ModuleTaskProgressOut] = Field(default_factory=list)
     critical_failure_count: int
     status: str
     recent_actions: list[ProgressRecentActionOut]

@@ -80,3 +80,38 @@ PROGRESS_REQUIRED_ACTIONS: Final[tuple[str, ...]] = (
 # Minimum overall score required for "eligible_for_assessment".
 PROGRESS_ELIGIBLE_MIN_SCORE: Final[float] = 80.0
 
+# --- Automated cohort / certification (per membership role) ---
+
+# Minimum ActivityLog rows per module for auto-certificate eligibility.
+CERT_MIN_TASKS_PER_MODULE_BY_ROLE: Final[dict[str, dict[str, int]]] = {
+    "hr_ops": {"employees": 3, "compliance": 2, "leave": 3},
+    "talent_acquisition": {"recruitment": 4, "employees": 2},
+    "ld_performance": {"training": 4, "employees": 2},
+    "compensation_analytics": {"compensation": 4, "employees": 2},
+    "company_admin": {
+        "employees": 3,
+        "compliance": 2,
+        "leave": 2,
+        "recruitment": 2,
+        "training": 2,
+        "compensation": 2,
+    },
+    "employee": {"employees": 1, "compliance": 1, "leave": 1},
+}
+
+CERT_MIN_SCORE_BY_ROLE: Final[dict[str, float]] = {
+    "hr_ops": 75.0,
+    "talent_acquisition": 75.0,
+    "ld_performance": 75.0,
+    "compensation_analytics": 75.0,
+    "company_admin": 80.0,
+    "employee": 65.0,
+}
+
+CERT_DEFAULT_MIN_TASKS_PER_MODULE: Final[dict[str, int]] = {
+    "employees": 2,
+    "compliance": 1,
+    "leave": 1,
+}
+CERT_DEFAULT_MIN_SCORE: Final[float] = 70.0
+
