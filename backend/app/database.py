@@ -33,6 +33,7 @@ def init_db() -> None:
         _sqlite_add_column_if_missing("companies", "location", "VARCHAR(255)")
         _sqlite_add_column_if_missing("employees", "onboarding_checklist_json", "TEXT")
         _sqlite_add_column_if_missing("employees", "position_id", "VARCHAR(36)")
+        _sqlite_add_column_if_missing("positions", "works_with_id", "VARCHAR(36)")
         _sqlite_add_column_if_missing("payslips", "earnings_json", "TEXT")
         _sqlite_add_column_if_missing("pay_runs", "department_id", "VARCHAR(36)")
         _sqlite_add_column_if_missing("surveys", "survey_type", "VARCHAR(32)")
@@ -119,13 +120,28 @@ def _migrate_employee_document_doc_types(session: Session) -> None:
 
 def _backfill_employee_documents(session: Session) -> None:
     """Ensure photo, gov_id, offer_letter rows exist for every employee (Option B table)."""
-    from sqlalchemy import select  # noqa: PLC0415
+    import logging  # noqa: PLC0415
 
+    from sqlalchemy import func, select  # noqa: PLC0415
+
+    from app.models.company import Company  # noqa: PLC0415
     from app.models.employee import Employee  # noqa: PLC0415
     from app.services.employee_document_sync import ensure_default_document_rows  # noqa: PLC0415
 
-    r = session.execute(select(Employee.id, Employee.company_id))
-    for eid, cid in r.all():
+    # Inner join skips orphan employees (e.g. company removed while FK checks were off) so inserts
+    # into employee_documents do not violate FOREIGN KEY(companies.id).
+
+    total_emps = session.scalar(select(func.count()).select_from(Employee)) or 0
+    r = session.execute(
+        select(Employee.id, Employee.company_id).join(Company, Company.id == Employee.company_id)
+    )
+    linked = list(r.all())
+    if total_emps > len(linked):
+        logging.getLogger(__name__).warning(
+            "Skipping employee document backfill for %s employee row(s) with no matching company",
+            total_emps - len(linked),
+        )
+    for eid, cid in linked:
         ensure_default_document_rows(session, cid, eid)
     session.commit()
 

@@ -84,11 +84,22 @@
 
 .orgTreePane {
   min-width: 0;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Fits within the scrolled workspace so the chart uses internal scrollbars, not the main column height. */
+  max-height: calc(100dvh - 6.75rem);
 }
 
 .orgTreeCard {
   padding: 1rem 1.05rem;
   text-align: left;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .deptGrid {

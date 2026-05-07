@@ -1,7 +1,57 @@
-.wrap {
-  padding: 0.25rem 0.15rem;
-  overflow-x: auto;
+.chartShell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  padding: 0.25rem 0;
   text-align: left;
+  box-sizing: border-box;
+}
+
+.chartShell:fullscreen {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card);
+  box-sizing: border-box;
+}
+
+.chartShell:fullscreen .treeChartWrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.fullscreenBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  margin: 0;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-primary);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.fullscreenBtn:hover {
+  background: rgba(214, 236, 255, 0.55);
+  border-color: rgba(11, 79, 134, 0.28);
+  color: #0b4f86;
+}
+
+.fullscreenBtn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 55%, white);
+  outline-offset: 2px;
 }
 
 .treeHeader {
@@ -47,11 +97,96 @@
   outline-offset: 2px;
 }
 
+.chartHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.zoomCluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.12rem 0.3rem;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.zoomBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.65rem;
+  height: 1.65rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(214, 236, 255, 0.45);
+  color: #0b4f86;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.zoomBtn:hover {
+  background: rgba(214, 236, 255, 0.85);
+}
+
+.zoomBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.zoomLabel {
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: #64748b;
+  min-width: 2.35rem;
+  text-align: center;
+  user-select: none;
+}
+
 .hint {
   margin: 0 0 1rem;
   font-size: 0.8rem;
   color: var(--text-muted);
   line-height: 1.4;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem 1.25rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legendSwatch {
+  width: 1.5rem;
+  height: 0;
+  border-top: 2px solid #334155;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.legendSwatchDashed {
+  border-top-style: dashed;
+  border-width: 2px;
+  border-color: #92400e;
 }
 
 .empty {
@@ -60,127 +195,297 @@
   color: var(--text-muted);
 }
 
-/* Line layer: under cards, never over text */
-.gradeTableWrap {
+.treeChartWrap {
   position: relative;
-  padding: 1rem 0.6rem 1.25rem;
+  flex: 1 1 auto;
+  min-height: 12rem;
+  padding: 1rem 1rem 1.35rem;
   border-radius: 12px;
   background: var(--bg-page, #f8f9fa);
   border: 1px solid var(--border);
-  overflow: visible;
+  overflow: auto;
+  overscroll-behavior: contain;
   isolation: isolate;
-}
-
-.linkCanvas {
-  position: absolute;
-  inset: 0;
-  display: block;
+  box-sizing: border-box;
   width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
+  max-width: 100%;
+  min-width: 0;
+  cursor: grab;
+  touch-action: none;
 }
 
-.gradeTable {
+.treeChartWrap.panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.zoomCanvas {
+  position: relative;
+  width: max-content;
+  min-width: 100%;
+}
+
+/* Don’t use flex justify-content:center on the scroll container: overflowing
+   flex items cannot scroll all the way to the start, so the left-most pillars
+   appear “stuck” clipped in the corner (CSS flexbox + overflow). */
+
+/* Cross-department reporting + works-with (SVG only; in-dept tree-bus stays CSS). */
+.linkSvgLayer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 4;
+  shape-rendering: geometricPrecision;
+}
+
+.treeBody {
   position: relative;
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.9rem;
+  gap: 2.55rem;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  margin-inline: auto;
+}
+
+.treeChartColumn {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2.05rem;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+/* CEO-only strip (dep:csuite): single compact row above departmental pillars. */
+.topBandRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1.6rem 3.35rem;
+  width: max-content;
+}
+
+/* Primary CEO-direct pillars; each cluster can show satellite dept boxes underneath. */
+.departmentMainRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1.65rem 3.6rem;
+  width: max-content;
+  max-width: none;
+}
+
+/* One CEO-direct dept + optional satellite row(s). */
+.pillarCluster {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.65rem;
+  flex: 0 0 auto;
+}
+
+.pillarPrimary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pillarSatelliteSingle {
+  display: flex;
+  justify-content: center;
   width: 100%;
-  min-width: min(100%, 12rem);
+}
+
+.pillarSatelliteBand {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1.75rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pillarSatelliteSide {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 1.75rem;
+  min-width: 0;
+}
+
+.pillarSatelliteSideRight {
+  justify-content: flex-start;
 }
 
 .rootPillRow {
   display: flex;
   justify-content: center;
-  margin: 0 0 0.45rem;
+  align-items: center;
+  width: 100%;
+  margin: 0 0 0.35rem;
 }
 
 .rootPill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 10rem;
-  font-weight: 700;
+  min-width: 12rem;
+  font-weight: 750;
   color: #0b4f86;
   background: linear-gradient(180deg, rgba(214, 236, 255, 0.95), rgba(240, 247, 255, 0.95));
   border: 1px solid rgba(11, 79, 134, 0.28);
   border-radius: 999px;
-  padding: 0.4rem 0.85rem;
-  font-size: 0.88rem;
+  padding: 0.55rem 1.35rem;
+  font-size: 1.2rem;
+  letter-spacing: 0.01em;
 }
 
-/* One row = one grade; full width so the card row can center as a “tree” band */
-.gradeRow {
-  display: grid;
-  grid-template-columns: 2.75rem minmax(0, 1fr);
-  gap: 0.45rem 0.5rem;
-  align-items: start;
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-  background: transparent;
-  box-sizing: border-box;
-}
-
-.gradeRuler {
-  text-align: right;
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  color: #64748b;
-  padding-top: 0.5rem;
-  line-height: 1.2;
-  user-select: none;
-  border-right: 1px solid #e2e8f0;
-  padding-right: 0.35rem;
-  align-self: stretch;
-}
-
-/* C org columns: each can split into M “branch” lanes (max direct reports) for distinct lines */
-.gradeRowGrid {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  padding: 0.35rem 0.1rem;
-  column-gap: 0.4rem;
-  align-items: start;
-  box-sizing: border-box;
-}
-
-.orgCol {
-  min-width: 0;
-  width: 100%;
-  padding: 0 0.1rem;
-  box-sizing: border-box;
-}
-
-.orgSubGrid {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  column-gap: 0.35rem;
-  align-items: start;
-  box-sizing: border-box;
-}
-
-.orgSubCell {
+/* One panel per department: fixed max width so several can sit per row, centered as a group. */
+.deptBlock {
   display: flex;
   flex-direction: column;
-  flex-wrap: nowrap;
   align-items: center;
-  justify-content: flex-start;
   gap: 0.5rem;
-  min-width: 0;
-  min-height: 0.25rem;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  box-sizing: border-box;
+  padding: 0.65rem 1.35rem 0.92rem;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
+
+.deptBlockHeader {
+  width: 100%;
+  text-align: center;
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
+  line-height: 1.2;
+  padding-bottom: 0.08rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.45);
+}
+
+/* ---------- Tree-bus connectors (pure CSS, no overlay) ---------- */
+
+/* Root strip inside one department: sibling tree roots laid side-by-side
+ * (most departments have 1 root; CEO -> CTO -> ... still works because the
+ * stack hosts a single root with its own branch). */
+.deptTreeStack {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: center;
+  width: max-content;
+  gap: 1.25rem;
+}
+
+/* One node = card on top, optional connector + branchRow underneath. */
+.treeNode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+/* Vertical drop from a manager card down to the bus over its direct reports. */
+.connectorDown {
+  width: 1px;
+  height: 17px;
+  background: #cbd5e1;
+  margin: 0 auto;
+}
+
+/* Horizontal flex row of children. The "bus" line is drawn by per-child
+ * pseudo elements (.childWrap::after); half-gap uses calc so segments meet cleanly (no end gaps). */
+.branchRow {
+  --branch-gap: 2.05rem;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: var(--branch-gap);
+  position: relative;
+}
+
+/* Each child contributes:
+ *  - ::after  -> a horizontal segment of the bus, extended by half the row gap
+ *               on the inner side(s) so segments meet across the gaps
+ *  - ::before -> a short up-stub from the bus down to the child card top */
+.childWrap {
+  position: relative;
+  flex: 0 0 auto;
+  padding-top: 17px; /* space the up-stub + bus — matches connectorDown */
+}
+
+.childWrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(-1 * var(--branch-gap) / 2);
+  right: calc(-1 * var(--branch-gap) / 2);
+  height: 1px;
+  background: #cbd5e1;
+  box-sizing: border-box;
+}
+
+/* T-joints: trimmed outer halves mirror inner tree-bus symmetry (no orphaned line stubs). */
+.childWrap:first-child::after {
+  left: calc(50% - 1px / 2);
+  right: calc(-1 * var(--branch-gap) / 2);
+}
+
+.childWrap:last-child::after {
+  left: calc(-1 * var(--branch-gap) / 2);
+  right: calc(50% - 1px / 2);
+}
+
+.childWrap:only-child::after {
+  display: none; /* single direct report: just connectorDown carries through */
+}
+
+.childWrap::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 17px;
+  background: #cbd5e1;
+}
+
+/* Note: only-child hides the bus segment but the up-stub stays so the
+ * connectorDown above + this stub form one continuous vertical line. */
 
 .nodeAnchor {
   position: relative;
   z-index: 2;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   max-width: 100%;
 }
 
@@ -189,24 +494,46 @@
   flex-direction: column;
   align-items: flex-start;
   text-align: left;
-  gap: 0.32rem;
-  max-width: 16rem;
-  min-width: 7.5rem;
+  gap: 0.35rem;
+  max-width: 18.5rem;
+  min-width: 11.5rem;
   background: var(--bg-card, #fff);
   border: 1px solid color-mix(in srgb, var(--branch-color) 40%, #e2e8f0);
   border-top: 3px solid var(--branch-color);
   border-radius: 9px;
-  padding: 0.5rem 0.75rem 0.45rem;
+  padding: 0.6rem 0.95rem 0.55rem;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
   box-sizing: border-box;
 }
 
+.nodeCardTop {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.gradeBadge {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 0.12rem 0.35rem;
+  line-height: 1.2;
+}
+
 .nodeName {
+  flex: 1;
+  min-width: 0;
   font-weight: 600;
   color: var(--text-primary);
   font-size: 0.9rem;
   line-height: 1.25;
-  max-width: 100%;
   word-wrap: break-word;
 }
 
@@ -244,4 +571,21 @@
   color: var(--text-muted);
   font-style: italic;
   line-height: 1.3;
+}
+
+.worksWithLink {
+  font-size: 0.7rem;
+  color: #92400e;
+  text-decoration: none;
+  font-style: italic;
+  line-height: 1.3;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worksWithLink:hover {
+  text-decoration: underline;
 }

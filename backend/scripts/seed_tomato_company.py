@@ -339,6 +339,17 @@ def seed(*, force: bool = False) -> None:
         )
         db.flush()
 
+        # Symmetric peers for org-chart “works-with” overlays (each position ≤ one partner).
+        pos_ppc_head.works_with_id = pos_ops_manager.id
+        pos_ops_manager.works_with_id = pos_ppc_head.id
+        pos_ppc_hrbp.works_with_id = pos_ppc_ta.id
+        pos_ppc_ta.works_with_id = pos_ppc_hrbp.id
+        pos_swe_1.works_with_id = pos_swe_2.id
+        pos_swe_2.works_with_id = pos_swe_1.id
+        pos_fleet_supervisor.works_with_id = pos_cx_agent.id
+        pos_cx_agent.works_with_id = pos_fleet_supervisor.id
+        db.flush()
+
         # --- Job catalog (positions) ---
         jobs_spec: list[tuple[str, str | None, str | None, str | None]] = [
             ("Delivery Partner", "Operations", "L2", "G2"),
