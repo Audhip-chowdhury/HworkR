@@ -67,6 +67,7 @@ from app.models.recruitment import Application, Interview, JobPosting, Offer, Re
 from app.models.user import User
 
 COMPANY_NAME = "Fox Inc"
+FOX_LOGO_URL = "/branding-assets/fox_inc_logo.png"
 SEED_TAG = "fox_inc_full_seed_v1"
 DEFAULT_EMPLOYEES = 50
 SEED_PASSWORD = "FoxIncDemo2026!"
@@ -935,6 +936,8 @@ def seed_fox_inc(*, employees: int = DEFAULT_EMPLOYEES, force: bool = False) -> 
                 # Even on no-op runs, ensure the real admin login is linked.
                 primary_admin = _ensure_user(db, PRIMARY_ADMIN_EMAIL, "Fox Platform Admin")
                 _ensure_membership(db, user_id=primary_admin.id, company_id=company.id, role="company_admin")
+                if not company.logo_url:
+                    company.logo_url = FOX_LOGO_URL
                 db.commit()
                 print(
                     f'Fox Inc already appears seeded ({existing_seed_emp} FOX-* employees found). '
@@ -951,11 +954,16 @@ def seed_fox_inc(*, employees: int = DEFAULT_EMPLOYEES, force: bool = False) -> 
             company = Company(
                 id=uuid_str(),
                 name=COMPANY_NAME,
+                logo_url=FOX_LOGO_URL,
                 industry="Technology",
                 location="India (multi-city)",
                 config_json={"seed_tag": SEED_TAG, "source": "seed_fox_inc_full"},
             )
             db.add(company)
+            db.flush()
+
+        if company.name.strip().lower() == COMPANY_NAME.lower() and not company.logo_url:
+            company.logo_url = FOX_LOGO_URL
             db.flush()
 
         admin, hr, ta, comp, ld = _seed_admin_users(db, company)

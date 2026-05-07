@@ -1,7 +1,11 @@
 import uuid
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,11 +13,15 @@ from app.api.deps import require_company_membership_path, require_company_roles_
 from app.database import get_db
 from app.models.base import uuid_str
 from app.models.certification import CertProgress, Certificate, CertTrack
+from app.models.company import Company
 from app.models.membership import CompanyMembership
 from app.models.tracking import ActivityLog
 from app.models.user import User
 from app.scoring_rules import (
-    PROGRESS_ELIGIBLE_MIN_SCORE,
+    CERT_DEFAULT_MIN_SCORE,
+    CERT_DEFAULT_MIN_TASKS_PER_MODULE,
+    CERT_MIN_SCORE_BY_ROLE,
+    CERT_MIN_TASKS_PER_MODULE_BY_ROLE,
     PROGRESS_MODULES,
     PROGRESS_REQUIRED_ACTIONS,
 )
@@ -25,13 +33,17 @@ from app.schemas.certification import (
     CertProgressUpsert,
     CertTrackCreate,
     CertTrackOut,
+    ModuleTaskProgressOut,
     ProgressDimensionOut,
     ProgressModuleOut,
     ProgressRecentActionOut,
 )
+from app.config import settings
 from app.services.activity_tracking import log_tracked_hr_action
 from app.services.audit import write_audit
 from app.services.certification_rules import validate_certificate_issuance
+from app.services.certificate_logo import resolve_certificate_logo_path
+from app.services.certificate_pdf import render_certificate_pdf
 from app.services.integration_hooks import publish_domain_event_post_commit
 
 router = APIRouter(prefix="/companies/{company_id}/certification", tags=["certification"])
@@ -144,7 +156,8 @@ def get_my_progress_dashboard(
     db: Annotated[Session, Depends(get_db)],
     recent_limit: int = 15,
 ) -> CertificationProgressDashboardOut:
-    user, _ = ctx
+    user, membership = ctx
+    role = membership.role
     logs = db.execute(
         select(ActivityLog)
         .where(
@@ -203,19 +216,71 @@ def get_my_progress_dashboard(
         if isinstance(x.context_json, dict) and bool(x.context_json.get("critical_failure"))
     )
 
+    min_tasks_map = CERT_MIN_TASKS_PER_MODULE_BY_ROLE.get(role) or CERT_MIN_TASKS_PER_MODULE_BY_ROLE["employee"]
+    tasks_by_module = Counter(x.module for x in logs)
+    module_task_progress: list[ModuleTaskProgressOut] = [
+        ModuleTaskProgressOut(module=mod, required=int(req), completed=int(tasks_by_module.get(mod, 0)))
+        for mod, req in min_tasks_map.items()
+    ]
+    required_actions_total = sum(int(v) for v in min_tasks_map.values())
+    required_actions_completed = sum(
+        min(tasks_by_module.get(mod, 0), int(req)) for mod, req in min_tasks_map.items()
+    )
+    missing_required.extend(
+        [
+            f"{mod} ({tasks_by_module.get(mod, 0)}/{req})"
+            for mod, req in min_tasks_map.items()
+            if tasks_by_module.get(mod, 0) < int(req)
+        ]
+    )
+
     overall = _avg(scores)
+    track = db.execute(
+        select(CertTrack)
+        .where(CertTrack.company_id == company_id, CertTrack.role_type == role)
+        .order_by(CertTrack.created_at.desc())
+    ).scalars().first()
+
+    pending_cert = None
+    approved_cert = None
+    if track:
+        pending_cert = db.execute(
+            select(Certificate).where(
+                Certificate.company_id == company_id,
+                Certificate.user_id == user.id,
+                Certificate.track_id == track.id,
+                Certificate.approval_status == "pending_approval",
+            )
+        ).scalar_one_or_none()
+        approved_cert = db.execute(
+            select(Certificate).where(
+                Certificate.company_id == company_id,
+                Certificate.user_id == user.id,
+                Certificate.track_id == track.id,
+                Certificate.approval_status == "approved",
+            )
+        ).scalar_one_or_none()
+
+    role_min = CERT_MIN_SCORE_BY_ROLE.get(role, CERT_DEFAULT_MIN_SCORE)
+    effective_min = float(role_min)
+    if track is not None:
+        effective_min = max(effective_min, float(track.min_score))
+
+    modules_ok = all(tasks_by_module.get(mod, 0) >= int(req) for mod, req in min_tasks_map.items())
+    score_ok = overall is not None and overall >= effective_min
+
     if not logs:
-        status = "not_started"
+        dash_status = "not_started"
     elif critical_failure_count > 0:
-        status = "failed"
-    elif (
-        completed_required == len(PROGRESS_REQUIRED_ACTIONS)
-        and overall is not None
-        and overall >= PROGRESS_ELIGIBLE_MIN_SCORE
-    ):
-        status = "eligible_for_assessment"
+        dash_status = "failed"
+    elif approved_cert is not None:
+        dash_status = "completed"
+    elif pending_cert is not None:
+        dash_status = "pending_approval"
+    elif modules_ok and score_ok:
+        dash_status = "eligible_for_assessment"
     else:
-        status = "in_progress"
+        dash_status = "in_progress"
 
     recent_actions = [
         ProgressRecentActionOut(
@@ -239,11 +304,12 @@ def get_my_progress_dashboard(
             process_adherence=_avg(dim_vals["process_adherence"]),
         ),
         module_breakdown=module_breakdown,
-        required_actions_total=len(PROGRESS_REQUIRED_ACTIONS),
-        required_actions_completed=completed_required,
+        required_actions_total=required_actions_total,
+        required_actions_completed=required_actions_completed,
         missing_required_actions=missing_required,
+        module_task_progress=module_task_progress,
         critical_failure_count=critical_failure_count,
-        status=status,
+        status=dash_status,
         recent_actions=recent_actions,
     )
 
@@ -286,6 +352,7 @@ def issue_certificate(
         score=body.score,
         breakdown_json=body.breakdown_json,
         verification_id=verification_id,
+        approval_status="pending_approval",
     )
     db.add(cert)
     prog = db.execute(
@@ -297,7 +364,9 @@ def issue_certificate(
     ).scalar_one_or_none()
     prog_started = prog.started_at if prog else None
     if prog:
-        prog.status = "completed"
+        prog.status = "pending_approval"
+        db.add(prog)
+    db.flush()
     write_audit(db, company_id=company_id, user_id=user.id, entity_type="certificate", entity_id=cert.id, action="issue", changes_json={})
     log_tracked_hr_action(
         db,
@@ -324,32 +393,36 @@ def issue_certificate(
     return cert
 
 
-@router.get("/certificates/{certificate_id}/pdf")
-def certificate_pdf_placeholder(
+@router.get("/certificates/me", response_model=list[CertificateOut])
+def list_my_certificates(
     company_id: str,
-    certificate_id: str,
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
     db: Annotated[Session, Depends(get_db)],
-) -> dict[str, str]:
-    """Contract placeholder until a PDF renderer is integrated."""
-    user, membership = ctx
-    c = db.execute(
-        select(Certificate).where(
-            Certificate.id == certificate_id,
+) -> list[Certificate]:
+    user, _ = ctx
+    r = db.execute(
+        select(Certificate)
+        .where(Certificate.company_id == company_id, Certificate.user_id == user.id)
+        .order_by(Certificate.issued_at.desc())
+    )
+    return list(r.scalars().all())
+
+
+@router.get("/certificates/pending", response_model=list[CertificateOut])
+def list_pending_certificates(
+    company_id: str,
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path({"company_admin"}))],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[Certificate]:
+    r = db.execute(
+        select(Certificate)
+        .where(
             Certificate.company_id == company_id,
+            Certificate.approval_status == "pending_approval",
         )
-    ).scalar_one_or_none()
-    if c is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")
-    if c.user_id != user.id and membership.role != "company_admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view this certificate")
-    return {
-        "status": "not_implemented",
-        "message": "PDF generation is not wired yet. Use verification_id for external rendering.",
-        "certificate_id": certificate_id,
-        "verification_id": c.verification_id,
-        "suggested_url": f"/api/v1/companies/{company_id}/certification/certificates/verify/{c.verification_id}",
-    }
+        .order_by(Certificate.issued_at.desc())
+    )
+    return list(r.scalars().all())
 
 
 @router.get("/certificates/verify/{verification_id}", response_model=CertificateOut)
@@ -370,16 +443,103 @@ def verify_certificate(
     return cert
 
 
-@router.get("/certificates/me", response_model=list[CertificateOut])
-def list_my_certificates(
+@router.get("/certificates/{certificate_id}/pdf")
+def certificate_pdf_download(
     company_id: str,
+    certificate_id: str,
     ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_membership_path)],
     db: Annotated[Session, Depends(get_db)],
-) -> list[Certificate]:
-    user, _ = ctx
-    r = db.execute(
-        select(Certificate)
-        .where(Certificate.company_id == company_id, Certificate.user_id == user.id)
-        .order_by(Certificate.issued_at.desc())
+) -> Response:
+    user, membership = ctx
+    c = db.execute(
+        select(Certificate).where(
+            Certificate.id == certificate_id,
+            Certificate.company_id == company_id,
+        )
+    ).scalar_one_or_none()
+    if c is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")
+    if c.user_id != user.id and membership.role != "company_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view this certificate")
+    if c.approval_status != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="PDF is available after the certificate is approved",
+        )
+    holder = db.execute(select(User).where(User.id == c.user_id)).scalar_one_or_none()
+    company = db.execute(select(Company).where(Company.id == c.company_id)).scalar_one_or_none()
+    track = db.execute(select(CertTrack).where(CertTrack.id == c.track_id)).scalar_one_or_none()
+
+    issued = c.issued_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    logo_path = (
+        resolve_certificate_logo_path(company=company, upload_dir=Path(settings.upload_dir))
+        if company
+        else None
     )
-    return list(r.scalars().all())
+    pdf_bytes = render_certificate_pdf(
+        recipient_name=holder.name if holder else "Recipient",
+        company_name=company.name if company else "Company",
+        track_name=track.name if track else "Certification",
+        level=c.level,
+        score=float(c.score),
+        verification_id=c.verification_id,
+        issued_at_label=issued,
+        logo_path=logo_path,
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="certificate-{c.verification_id[:8]}.pdf"'},
+    )
+
+
+@router.post("/certificates/{certificate_id}/approve", response_model=CertificateOut)
+def approve_certificate(
+    company_id: str,
+    certificate_id: str,
+    ctx: Annotated[tuple[User, CompanyMembership], Depends(require_company_roles_path({"company_admin"}))],
+    db: Annotated[Session, Depends(get_db)],
+) -> Certificate:
+    admin_user, _ = ctx
+    cert = db.execute(
+        select(Certificate).where(
+            Certificate.id == certificate_id,
+            Certificate.company_id == company_id,
+        )
+    ).scalar_one_or_none()
+    if cert is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")
+    if cert.approval_status == "approved":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Certificate already approved")
+    cert.approval_status = "approved"
+    prog = db.execute(
+        select(CertProgress).where(
+            CertProgress.track_id == cert.track_id,
+            CertProgress.company_id == company_id,
+            CertProgress.user_id == cert.user_id,
+        )
+    ).scalar_one_or_none()
+    if prog:
+        prog.status = "completed"
+        db.add(prog)
+    db.add(cert)
+    write_audit(
+        db,
+        company_id=company_id,
+        user_id=admin_user.id,
+        entity_type="certificate",
+        entity_id=cert.id,
+        action="approve",
+        changes_json={},
+    )
+    db.commit()
+    db.refresh(cert)
+    publish_domain_event_post_commit(
+        company_id=company_id,
+        event_type="certificate.approved",
+        entity_type="certificate",
+        entity_id=cert.id,
+        actor_user_id=admin_user.id,
+        data={"user_id": cert.user_id, "track_id": cert.track_id, "verification_id": cert.verification_id},
+    )
+    return cert

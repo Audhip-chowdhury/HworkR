@@ -56,6 +56,9 @@ def init_db() -> None:
         
         _sqlite_add_column_if_missing("courses", "points", "FLOAT DEFAULT 0")
         _sqlite_add_column_if_missing("courses", "due_date", "VARCHAR(32)")
+        _sqlite_add_column_if_missing(
+            "certificates", "approval_status", "VARCHAR(32) NOT NULL DEFAULT 'pending_approval'"
+        )
         _sqlite_migrate_req_code_global_unique()
 
     with SessionLocal() as session:
