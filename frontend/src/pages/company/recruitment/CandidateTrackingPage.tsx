@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import {
   listApplicationActivity,
   listApplications,
@@ -150,18 +150,6 @@ export function CandidateTrackingPage() {
 
   return (
     <div className={styles.org}>
-      <div className={styles.moduleNav}>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment`}>Recruitment home</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/postings`}>Job postings</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/pipeline`}>Pipeline</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/interviews`}>Interviews</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/offers`}>Offers</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/candidate-portal`}>Candidate portal</Link>
-        <span className={styles.moduleNavBtn} style={{ opacity: 0.95, cursor: 'default', fontWeight: 600 }}>
-          Tracking
-        </span>
-      </div>
-
       <section className={styles.card}>
         <h3 className={styles.h3}>Candidate activity</h3>
         <p className={styles.muted} style={{ marginTop: 0 }}>

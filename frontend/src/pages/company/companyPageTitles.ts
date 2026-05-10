@@ -53,7 +53,7 @@ export function companySectionTitle(
       subtitle: 'Departments, positions, and reporting hierarchy',
     },
     workflows: {
-      title: 'Workflows',
+      title: 'Approval',
       subtitle: 'Templates and approval instances',
     },
     recruitment: {
@@ -164,7 +164,7 @@ export function companySectionTitle(
 
   if (key === 'workflows' && parts.length >= 2) {
     return {
-      title: 'Workflow instance',
+      title: 'Approval',
       subtitle: 'Approve or reject steps',
     }
   }

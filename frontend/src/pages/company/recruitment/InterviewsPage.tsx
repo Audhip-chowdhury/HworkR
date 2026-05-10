@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { createInterview, listApplications, listInterviews, updateInterview } from '../../../api/recruitmentApi'
 import { InterviewsCalendarPanel } from './InterviewsCalendarPanel'
@@ -142,9 +142,6 @@ export function InterviewsPage() {
 
   return (
     <section className={styles.card}>
-      <div className={styles.moduleNav}>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment`}>Back to Recruitment</Link>
-      </div>
       <h3 className={styles.h3}>Interviews</h3>
       <div className={styles.tabBar} role="tablist" aria-label="Interview views">
         <button

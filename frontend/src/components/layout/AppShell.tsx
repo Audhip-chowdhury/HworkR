@@ -51,7 +51,12 @@ function isChildNavActive(
 ): boolean {
   try {
     const childUrl = new URL(childTo, window.location.origin)
-    if (childUrl.pathname !== pathname) return false
+    if (childUrl.pathname !== pathname) {
+      if (childUrl.pathname.endsWith('/workflows') && pathname.startsWith(`${childUrl.pathname}/`)) {
+        return true
+      }
+      return false
+    }
     const locParams = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
     const locTab = locParams.get('tab')
     const childTab = new URLSearchParams(childUrl.search).get('tab')
@@ -319,7 +324,7 @@ export function AppShell({ title, subtitle, companyName, navItems, topbarExtra, 
                       const active = isChildNavActive(child.to, pathname, search, siblingTos)
                       return (
                         <NavLink
-                          key={child.to}
+                          key={`${child.label}:${child.to}`}
                           to={child.to}
                           className={() =>
                             `${styles.navSubLink} ${active ? styles.navSubLinkActive : ''}`

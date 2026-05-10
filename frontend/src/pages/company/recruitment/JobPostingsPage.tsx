@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import {
   createPosting,
   listPostings,
@@ -238,9 +238,6 @@ export function JobPostingsPage() {
 
   return (
     <section className={styles.card}>
-      <div className={styles.moduleNav}>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment`}>Back to Recruitment</Link>
-      </div>
       <h3 className={styles.h3}>Job postings</h3>
       <p className={jpStyles.hint}>
         Each requisition can have at most one job posting. Use <strong>Posted</strong> when the role is live on external boards;

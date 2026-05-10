@@ -255,7 +255,7 @@ describe('role-based nav (HR split)', () => {
     expect(hr.some((n) => n.kind === 'group' && n.label === 'Employees')).toBe(true)
   })
 
-  it('shows Workflows only for recruitment and company admin', () => {
+  it('shows Approval only for recruitment and company admin', () => {
     const hr = companyNavItems('co1', {
       id: 'm1',
       user_id: 'u1',
@@ -264,7 +264,7 @@ describe('role-based nav (HR split)', () => {
       status: 'active',
       modules_access_json: null,
     })
-    expect(hr.some((n) => n.kind === 'link' && n.label === 'Workflows')).toBe(false)
+    expect(hr.some((n) => n.kind === 'link' && n.label === 'Approval')).toBe(false)
 
     const ta = companyNavItems('co1', {
       id: 'm2',
@@ -274,6 +274,7 @@ describe('role-based nav (HR split)', () => {
       status: 'active',
       modules_access_json: null,
     })
-    expect(ta.some((n) => n.kind === 'link' && n.label === 'Workflows')).toBe(true)
+    const recruitmentGroup = ta.find((n) => n.kind === 'group' && n.label === 'Recruitment')
+    expect(recruitmentGroup?.kind === 'group' && recruitmentGroup.children.some((c) => c.label === 'Approval')).toBe(true)
   })
 })

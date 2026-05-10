@@ -126,14 +126,6 @@ export function RecruitmentPage() {
 
   return (
     <div className={styles.org}>
-      <div className={styles.moduleNav}>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/postings`}>Job postings</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/pipeline`}>Pipeline</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/interviews`}>Interviews</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/offers`}>Offers</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/candidate-portal`}>Candidate portal</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/tracking`}>Tracking</Link>
-      </div>
       <section className={styles.card}>
         <h3 className={styles.h3}>Requisitions</h3>
         {error ? <p className={styles.error}>{error}</p> : null}
@@ -268,7 +260,7 @@ export function RecruitmentPage() {
                 <th>Skills</th>
                 <th>Experience</th>
                 <th>Education</th>
-                <th>Workflow</th>
+                <th>Approval</th>
                 {canSubmit ? <th /> : null}
               </tr>
             </thead>
@@ -292,7 +284,7 @@ export function RecruitmentPage() {
                       className={styles.linkBtn}
                       to={`/company/${companyId}/workflows?entity_type=requisition&entity_id=${encodeURIComponent(r.id)}`}
                     >
-                      View workflow
+                      View approval
                     </Link>
                   </td>
                   {canSubmit ? (
