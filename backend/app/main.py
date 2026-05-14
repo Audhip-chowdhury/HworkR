@@ -21,6 +21,7 @@ from app.api.v1 import (
     exports,
     hr_ops,
     inbox,
+    legal,
     me,
     notifications,
     organization,
@@ -97,6 +98,7 @@ v1.include_router(recruitment.router)
 v1.include_router(recruitment_public.router)
 v1.include_router(notifications.router)
 v1.include_router(inbox.router)
+v1.include_router(legal.router)
 v1.include_router(workflows.router)
 v1.include_router(webhooks.router)
 v1.include_router(exports.router)
