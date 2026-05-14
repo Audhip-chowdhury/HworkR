@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import require_platform_admin
@@ -26,6 +26,27 @@ def list_companies(
 ) -> list[Company]:
     r = db.execute(select(Company).order_by(Company.name))
     return list(r.scalars().all())
+
+
+@router.get("/companies/lookup", response_model=CompanyOut)
+def lookup_company_by_name(
+    name: Annotated[str, Query(min_length=1, max_length=255)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Company:
+    """Resolve a company id by display name (case-insensitive). Unauthenticated."""
+    term = name.strip()
+    if not term:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="name must not be empty")
+    r = db.execute(select(Company).where(func.lower(Company.name) == term.lower()))
+    rows = list(r.scalars().all())
+    if len(rows) == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No company found with that name")
+    if len(rows) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Multiple companies match this name; use list companies or a more specific name",
+        )
+    return rows[0]
 
 
 def _to_request_out(req: CompanyRegistrationRequest) -> CompanyRegistrationRequestOut:

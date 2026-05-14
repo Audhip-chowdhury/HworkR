@@ -2,6 +2,7 @@
 
 HR training and certification platform (Phase 0: foundation).
 
+
 ## Stack
 
 - **Backend:** FastAPI, SQLAlchemy 2 (sync), PostgreSQL, JWT auth, `pbkdf2_sha256` password hashing
