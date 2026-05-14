@@ -166,8 +166,8 @@ def main() -> None:
             )
         db.flush()
 
-        # democeo: company_admin; mrobbie: HR ops (Performance + HR workflows); others: employee.
-        membership_roles = ("company_admin", "hr_ops", "employee", "employee")
+        # democeo + mrobbie: company_admin; kopal.manager + kopal: employee.
+        membership_roles = ("company_admin", "company_admin", "employee", "employee")
         for (email, name, _code), mrole in zip(PEOPLE, membership_roles, strict=True):
             _ensure_membership(db, company_id, users[email.lower()].id, mrole)
         db.flush()
@@ -220,7 +220,10 @@ def main() -> None:
         db.commit()
 
         print()
-        print("Membership: democeo@demotree.example.com -> company_admin; mrobbie@demotree.example.com -> hr_ops; others: employee.")
+        print(
+            "Membership: democeo@demotree.example.com -> company_admin; "
+            "mrobbie@demotree.example.com -> company_admin; others: employee."
+        )
         print(
             "Positions: mrobbie and kopal.manager share grade 40 (different position rows) for peer-review / works-with."
         )
