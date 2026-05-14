@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { apiFetch } from '../../../api/client'
 import { listEmployeeSummaries, type EmployeeSummary } from '../../../api/employeesApi'
@@ -305,11 +305,6 @@ export function OffersPage() {
 
   return (
     <section className={styles.card}>
-      <div className={styles.moduleNav}>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment`}>
-          Back to Recruitment
-        </Link>
-      </div>
       <h3 className={styles.h3}>Offers</h3>
       {error ? <p className={styles.error}>{error}</p> : null}
 

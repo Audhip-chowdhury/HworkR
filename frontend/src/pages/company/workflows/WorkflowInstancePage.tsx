@@ -56,7 +56,7 @@ export function WorkflowInstancePage() {
     <div className={styles.org}>
       <p>
         <Link to={`/company/${companyId}/workflows`} className={styles.linkBtn}>
-          ← All workflows
+          ← All approvals
         </Link>
       </p>
       {error ? <p className={styles.error}>{error}</p> : null}
@@ -97,7 +97,7 @@ export function WorkflowInstancePage() {
               </button>
             </form>
           ) : (
-            <p className={styles.muted}>This workflow is complete.</p>
+            <p className={styles.muted}>This approval is complete.</p>
           )}
         </section>
       ) : (

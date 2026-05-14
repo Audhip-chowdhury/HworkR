@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useRealtimeEvents } from '../../../context/RealtimeEventsContext'
 import { listApplications, updateApplicationStage } from '../../../api/recruitmentApi'
 import styles from '../CompanyWorkspacePage.module.css'
@@ -100,10 +100,6 @@ export function CandidatePipelinePage() {
 
   return (
     <div className={styles.org}>
-      <div className={styles.moduleNav}>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment`}>Back to Recruitment</Link>
-        <Link className={styles.moduleNavBtn} to={`/company/${companyId}/recruitment/tracking`}>Tracking</Link>
-      </div>
       {error ? <p className={styles.error}>{error}</p> : null}
       <input className={styles.input} placeholder="Filter by posting/candidate" value={query} onChange={(e) => setQuery(e.target.value)} />
       <div className={styles.inline} style={{ alignItems: 'stretch', overflowX: 'auto', flexWrap: 'nowrap' }}>

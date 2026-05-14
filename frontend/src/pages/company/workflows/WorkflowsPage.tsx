@@ -82,7 +82,7 @@ export function WorkflowsPage() {
   return (
     <div className={styles.org}>
       <section className={styles.card}>
-        <h3 className={styles.h3}>Workflow templates</h3>
+        <h3 className={styles.h3}>Approval templates</h3>
         {error ? <p className={styles.error}>{error}</p> : null}
         <ul className={styles.ul}>
           {templates.map((t) => (
@@ -95,7 +95,7 @@ export function WorkflowsPage() {
       </section>
 
       <section className={styles.card}>
-        <h3 className={styles.h3}>Instances</h3>
+        <h3 className={styles.h3}>Approvals</h3>
         <form
           className={styles.reqForm}
           style={{ maxWidth: 720 }}
@@ -105,7 +105,7 @@ export function WorkflowsPage() {
           }}
         >
           <fieldset className={styles.reqFieldset}>
-            <legend className={styles.reqLegend}>Filter instances</legend>
+            <legend className={styles.reqLegend}>Filter approvals</legend>
             <div className={styles.reqFormGrid}>
               <label className={styles.labelBlock} htmlFor="wf-entity-type">
                 Entity type
@@ -177,13 +177,13 @@ export function WorkflowsPage() {
               {loading ? (
                 <tr>
                   <td colSpan={4} className={styles.muted}>
-                    Loading instances…
+                    Loading approvals…
                   </td>
                 </tr>
               ) : instances.length === 0 ? (
                 <tr>
                   <td colSpan={4} className={styles.muted}>
-                    {hasActiveFilters ? 'No instances match these filters.' : 'No workflow instances yet.'}
+                    {hasActiveFilters ? 'No approvals match these filters.' : 'No approvals yet.'}
                   </td>
                 </tr>
               ) : (

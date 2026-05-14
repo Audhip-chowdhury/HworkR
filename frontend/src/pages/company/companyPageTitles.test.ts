@@ -6,9 +6,9 @@ describe('companySectionTitle', () => {
     expect(companySectionTitle('').title).toBe('Workspace dashboard')
   })
 
-  it('detects workflow instance', () => {
+  it('detects approval detail route', () => {
     const t = companySectionTitle('workflows/abc-123')
-    expect(t.title).toBe('Workflow instance')
+    expect(t.title).toBe('Approval')
   })
 
   it('maps SSO path', () => {
