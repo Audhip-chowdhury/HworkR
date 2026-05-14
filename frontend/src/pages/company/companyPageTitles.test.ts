@@ -33,4 +33,9 @@ describe('companySectionTitle', () => {
     const publish = companySectionTitle('audits/policies', '?tab=publish')
     expect(publish.title).toBe('Publish policy')
   })
+
+  it('maps legal workspace path', () => {
+    const t = companySectionTitle('legal')
+    expect(t.title).toBe('Legal')
+  })
 })

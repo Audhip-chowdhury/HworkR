@@ -176,6 +176,24 @@ describe('companyNavItems', () => {
     const engEmp = findGroup(emp, 'Engagement & Surveys')
     expect(engEmp?.children.map((c) => c.label)).toEqual(['Surveys', 'Action Plans', 'My Surveys'])
   })
+
+  it('places Legal between Engagement & Surveys and Inbox', () => {
+    const nav = companyNavItems('co1', {
+      id: 'm1',
+      user_id: 'u1',
+      company_id: 'co1',
+      role: 'company_admin',
+      status: 'active',
+      modules_access_json: null,
+    })
+    const labels = nav.map((n) => n.label)
+    const idxEng = labels.indexOf('Engagement & Surveys')
+    const idxLegal = labels.indexOf('Legal')
+    const idxInbox = labels.indexOf('Inbox')
+    expect(idxEng).toBeGreaterThan(-1)
+    expect(idxLegal).toBeGreaterThan(idxEng)
+    expect(idxInbox).toBeGreaterThan(idxLegal)
+  })
 })
 
 describe('canListAllActivityLogs', () => {

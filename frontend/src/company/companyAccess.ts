@@ -140,6 +140,7 @@ export function canAccessCompanyPath(path: string, role: string): boolean {
     p.startsWith('leave') ||
     p.startsWith('audits') ||
     p.startsWith('inbox') ||
+    p.startsWith('legal') ||
     p.startsWith('progress') ||
     p.startsWith('certification')
   ) {

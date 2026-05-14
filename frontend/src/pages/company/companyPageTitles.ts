@@ -126,6 +126,10 @@ export function companySectionTitle(
     payroll: { title: 'Payroll', subtitle: 'Salary structures, grade bands, pay runs, reconciliation, payslips' },
     benefits: { title: 'Benefits', subtitle: 'Plans and enrollments' },
     surveys: { title: 'Engagement & Surveys', subtitle: 'Pulse surveys, responses, action plans, and satisfaction trends' },
+    legal: {
+      title: 'Legal',
+      subtitle: 'HR legal assistant grounded in Indian labour law context (informational only)',
+    },
     inbox: { title: 'Inbox', subtitle: 'Tasks requiring your action' },
     progress: {
       title: 'Progress',

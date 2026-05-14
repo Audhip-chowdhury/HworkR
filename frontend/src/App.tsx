@@ -50,6 +50,7 @@ import { TrainingScoresPage } from './pages/company/learning/TrainingScoresPage'
 import { PayrollPage } from './pages/company/payroll/PayrollPage'
 import { BenefitsPage } from './pages/company/benefits/BenefitsPage'
 import { SurveysPage } from './pages/company/surveys/SurveysPage'
+import { LegalPage } from './pages/company/legal/LegalPage'
 import { InboxPage } from './pages/company/inbox/InboxPage'
 import { AnalyticsPage } from './pages/company/analytics/AnalyticsPage'
 import { MyProfilePage } from './pages/company/employees/MyProfilePage'
@@ -184,6 +185,7 @@ export default function App() {
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="benefits" element={<BenefitsPage />} />
         <Route path="surveys" element={<SurveysPage />} />
+        <Route path="legal" element={<LegalPage />} />
         <Route path="inbox" element={<InboxPage />} />
         <Route path="progress" element={<ProgressPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />

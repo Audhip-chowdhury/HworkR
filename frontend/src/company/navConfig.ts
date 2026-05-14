@@ -162,6 +162,7 @@ export const COMPANY_NAV_DEF: NavDefItem[] = [
       { to: 'surveys?tab=my', label: 'My Surveys', roles: ['employee'] },
     ],
   },
+  { to: 'legal', label: 'Legal', roles: ALL_MEMBERS },
   { to: 'inbox', label: 'Inbox', roles: ALL_MEMBERS },
   { to: 'progress', label: 'Progress', roles: ALL_MEMBERS },
   {

@@ -4,7 +4,7 @@ HR training and certification platform (Phase 0: foundation).
 
 ## Stack
 
-- **Backend:** FastAPI, SQLAlchemy 2 (sync), SQLite (WAL mode), JWT auth, `pbkdf2_sha256` password hashing
+- **Backend:** FastAPI, SQLAlchemy 2 (sync), PostgreSQL, JWT auth, `pbkdf2_sha256` password hashing
 - **Frontend:** React 18, TypeScript, Vite, React Router
 
 ## Quick start
@@ -19,7 +19,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8080
 
 - API: `http://127.0.0.1:8080`
 - OpenAPI docs: `http://127.0.0.1:8080/docs`
-- SQLite file: `backend/hworkr.db` (created on first run)
+- Database: PostgreSQL from `DATABASE_URL` (tables created on first run)
 
 **Default platform admin** (seeded once):
 
@@ -30,11 +30,30 @@ Override secrets with a `backend/.env` file:
 
 ```env
 SECRET_KEY=your-long-random-string
-DATABASE_URL=sqlite:///./hworkr.db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/hworkr
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
-If you change the seeded admin email, delete `hworkr.db` and restart so tables are recreated.
+**Legal assistant (India RAG, optional):** point Vertex at your GCP project using either a **service account JSON path** (recommended) or `GCP_PROJECT_ID`. Add PDFs/TXT under **`data/legal/india/`** at the repo root and/or `backend/data/legal/india/` (ingest scans **both** by default; see `backend/data/legal/india/README.md`), then run `python -m scripts.ingest_legal_docs` from `backend/`. The company UI exposes **Legal** in the sidebar; chat calls `POST /api/v1/companies/{company_id}/legal/chat`.
+
+```env
+# Option A: service account file (sets GOOGLE_APPLICATION_CREDENTIALS; project_id read from JSON if GCP_PROJECT_ID omitted)
+GCP_CREDENTIALS_PATH=C:/path/to/your-service-account.json
+
+# Option B: explicit project (still use GCP_CREDENTIALS_PATH for auth unless you use gcloud ADC)
+GCP_PROJECT_ID=your-gcp-project
+GCP_LOCATION=asia-south1
+LEGAL_RAG_LLM_MODEL=gemini-2.5-flash
+LEGAL_RAG_EMBEDDING_MODEL=text-multilingual-embedding-002
+LEGAL_RAG_CHROMA_PERSIST_DIR=./data/chroma_legal
+LEGAL_RAG_COLLECTION=india_legal
+# Large ingests: smaller batches + pauses reduce Vertex 429 embedding quota errors (tune if needed).
+LEGAL_RAG_EMBED_BATCH_SIZE=5
+LEGAL_RAG_EMBED_MIN_INTERVAL_SECONDS=0.4
+LEGAL_RAG_EMBED_MAX_RETRIES=12
+```
+
+If you change the seeded admin email in existing data, either delete and recreate the database or remove that user row before restarting.
 
 ### 2. Frontend
 
@@ -69,7 +88,7 @@ Windows sometimes blocks or reserves ports (especially **8000**). Try:
 - Stubs: notifications list, inbox tasks, workflow templates (empty until later phases)
 - Audit trail writes on key mutations
 
-After pulling changes, restart the API once so new SQLite tables (`org_roles`, `department_org_roles`) are created.
+After pulling changes, restart the API once so new tables (`org_roles`, `department_org_roles`) are created.
 
 ## Next phases
 
