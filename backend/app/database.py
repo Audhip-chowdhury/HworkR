@@ -64,6 +64,7 @@ def init_db() -> None:
 
     with SessionLocal() as session:
         _seed_platform_admin(session)
+        _seed_demo_companies_and_users(session)
         _migrate_employee_document_doc_types(session)
         _backfill_employee_documents(session)
         _backfill_requisition_req_codes(session)
@@ -224,4 +225,103 @@ def _seed_platform_admin(session: Session) -> None:
         is_platform_admin=True,
     )
     session.add(admin)
+    session.commit()
+
+
+def _seed_demo_companies_and_users(session: Session) -> None:
+    """Seed demo tenants + HR users on a brand-new database."""
+    from sqlalchemy import func, select  # noqa: PLC0415
+
+    from app.core.security import get_password_hash  # noqa: PLC0415
+    from app.models.base import uuid_str  # noqa: PLC0415
+    from app.models.company import Company  # noqa: PLC0415
+    from app.models.membership import CompanyMembership  # noqa: PLC0415
+    from app.models.user import User  # noqa: PLC0415
+
+    company_count = session.scalar(select(func.count()).select_from(Company)) or 0
+    if company_count > 0:
+        return
+
+    default_password_hash = get_password_hash("admin123")
+
+    def get_or_create_user(
+        *,
+        email: str,
+        name: str,
+        is_platform_admin: bool = False,
+    ) -> User:
+        existing = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        if existing is not None:
+            return existing
+        u = User(
+            id=uuid_str(),
+            email=email,
+            password_hash=default_password_hash,
+            name=name,
+            is_platform_admin=is_platform_admin,
+        )
+        session.add(u)
+        session.flush()
+        return u
+
+    def create_company(*, name: str, industry: str, location: str) -> Company:
+        c = Company(
+            id=uuid_str(),
+            name=name,
+            industry=industry,
+            location=location,
+            config_json={"seeded_demo": True},
+        )
+        session.add(c)
+        session.flush()
+        return c
+
+    def ensure_membership(*, user_id: str, company_id: str, role: str) -> None:
+        existing = session.execute(
+            select(CompanyMembership).where(
+                CompanyMembership.user_id == user_id,
+                CompanyMembership.company_id == company_id,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return
+        session.add(
+            CompanyMembership(
+                id=uuid_str(),
+                user_id=user_id,
+                company_id=company_id,
+                role=role,
+                status="active",
+                modules_access_json={"seeded_demo": True},
+            )
+        )
+
+    fox = create_company(name="Fox Innovations Pvt Ltd", industry="Technology", location="Bengaluru")
+    nexa = create_company(name="Nexa Retail Group", industry="Retail", location="Mumbai")
+    vertex = create_company(name="Vertex Health Systems", industry="Healthcare", location="Hyderabad")
+    companies = [fox, nexa, vertex]
+
+    fox_admin = get_or_create_user(email="admin.fox@example.com", name="Fox Company Admin")
+    nexa_admin = get_or_create_user(email="admin.nexa@example.com", name="Nexa Company Admin")
+    vertex_admin = get_or_create_user(email="admin.vertex@example.com", name="Vertex Company Admin")
+
+    fox_hr = get_or_create_user(email="hr.fox@example.com", name="Fox HR Ops")
+    nexa_hr = get_or_create_user(email="hr.nexa@example.com", name="Nexa HR Ops")
+    vertex_hr = get_or_create_user(email="hr.vertex@example.com", name="Vertex HR Ops")
+
+    fox_ta = get_or_create_user(email="ta.fox@example.com", name="Fox Talent Acquisition")
+    multi_hr = get_or_create_user(email="hr.multi@example.com", name="Multi-company HR Tester")
+
+    ensure_membership(user_id=fox_admin.id, company_id=fox.id, role="company_admin")
+    ensure_membership(user_id=nexa_admin.id, company_id=nexa.id, role="company_admin")
+    ensure_membership(user_id=vertex_admin.id, company_id=vertex.id, role="company_admin")
+
+    ensure_membership(user_id=fox_hr.id, company_id=fox.id, role="hr_ops")
+    ensure_membership(user_id=nexa_hr.id, company_id=nexa.id, role="hr_ops")
+    ensure_membership(user_id=vertex_hr.id, company_id=vertex.id, role="hr_ops")
+    ensure_membership(user_id=fox_ta.id, company_id=fox.id, role="talent_acquisition")
+
+    for company in companies:
+        ensure_membership(user_id=multi_hr.id, company_id=company.id, role="hr_ops")
+
     session.commit()

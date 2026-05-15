@@ -27,6 +27,14 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8080
 - Email: `admin@example.com`
 - Password: `admin123`
 
+On a **fresh database** (when no companies exist yet), init also seeds demo tenants for testing:
+
+- 3 companies: Fox Innovations, Nexa Retail, Vertex Health
+- Company admins: `admin.fox@example.com`, `admin.nexa@example.com`, `admin.vertex@example.com`
+- HR users: `hr.fox@example.com`, `hr.nexa@example.com`, `hr.vertex@example.com`
+- Extra test users: `ta.fox@example.com`, `hr.multi@example.com` (HR across all 3 companies)
+- Password for all seeded users: `admin123`
+
 Override secrets with a `backend/.env` file:
 
 ```env
