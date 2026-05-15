@@ -66,7 +66,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. The Vite dev server proxies `/api` and `/health` to the backend (default `http://127.0.0.1:8080`).
+Open `http://localhost:5173`.
 
 If you need custom path prefixes:
 
@@ -74,15 +74,9 @@ If you need custom path prefixes:
 # Frontend app route base (served as /hworkr/...)
 VITE_FRONTEND_BASE_PATH=/hworkr
 
-# Backend route prefix (API/ws/health/uploads served as /hworkr-backend/...)
-VITE_BACKEND_BASE_PATH=/hworkr-backend
-
-# Backend origin for dev proxy. If this URL contains a path, it is preserved.
-VITE_API_ORIGIN=http://127.0.0.1:8080
-
-# Optional explicit API base used by fetch() calls.
-# Defaults to <VITE_BACKEND_BASE_PATH>/api/v1 when omitted.
-VITE_API_BASE=/hworkr-backend/api/v1
+# Full backend API base URL used by frontend fetch calls.
+# Example with Apache-managed prefix:
+VITE_API_BASE=https://your-host/hworkr-backend/api/v1
 ```
 
 ### If you see `WinError 10013` (socket access denied)
@@ -91,8 +85,8 @@ Windows sometimes blocks or reserves ports (especially **8000**). Try:
 
 1. Use another port, e.g. **8080** (default above) or **8765**:
    `uvicorn app.main:app --reload --host 127.0.0.1 --port 8765`
-2. Point the frontend at the same port by setting when starting Vite:
-   `set VITE_API_ORIGIN=http://127.0.0.1:8765` (PowerShell: `$env:VITE_API_ORIGIN="http://127.0.0.1:8765"`)
+2. Point the frontend at the same port by setting the full API base:
+   `set VITE_API_BASE=http://127.0.0.1:8765/api/v1` (PowerShell: `$env:VITE_API_BASE="http://127.0.0.1:8765/api/v1"`)
 3. See what is using a port: `netstat -ano | findstr :8000`
 4. Check excluded port ranges (Hyper-V / NAT): run in an elevated CMD:
    `netsh interface ipv4 show excludedportrange protocol=tcp`
