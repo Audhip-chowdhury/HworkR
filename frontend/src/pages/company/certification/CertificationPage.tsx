@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getToken } from '../../../api/client'
+import { API_BASE, getToken } from '../../../api/client'
 import * as certApi from '../../../api/certificationApi'
 import { useAuth } from '../../../auth/AuthContext'
 import type { Certificate, CertProgress, CertTrack } from '../../../api/types'
@@ -118,7 +118,6 @@ export function CertificationPage() {
 
   async function openPdfPlaceholder(certId: string) {
     if (!companyId) return
-    const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
     const token = getToken()
     const url = `${API_BASE}/companies/${companyId}/certification/certificates/${certId}/pdf`
     try {

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days for dev
     database_url: str = "postgresql://postgres:postgres@localhost:5432/hworkr"
+    api_base_path: str = Field(default="", validation_alias=AliasChoices("API_BASE_PATH", "BACKEND_BASE_PATH"))
     cors_origins: str = (
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:8020,http://127.0.0.1:8020"
@@ -72,6 +73,20 @@ class Settings(BaseSettings):
                 self.gcp_project_id = pid.strip()
         except (json.JSONDecodeError, OSError):
             pass
+        return self
+
+    @staticmethod
+    def _normalize_prefix_path(raw: str) -> str:
+        value = (raw or "").strip()
+        if not value or value == "/":
+            return ""
+        if not value.startswith("/"):
+            value = f"/{value}"
+        return value[:-1] if value.endswith("/") else value
+
+    @model_validator(mode="after")
+    def _normalize_paths(self) -> Self:
+        self.api_base_path = self._normalize_prefix_path(self.api_base_path)
         return self
 
 

@@ -33,6 +33,8 @@ Override secrets with a `backend/.env` file:
 SECRET_KEY=your-long-random-string
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/hworkr
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+# Optional: serve backend under a path prefix, e.g. /hworkr
+API_BASE_PATH=
 ```
 
 **Legal assistant (India RAG, optional):** point Vertex at your GCP project using either a **service account JSON path** (recommended) or `GCP_PROJECT_ID`. Add PDFs/TXT under **`data/legal/india/`** at the repo root and/or `backend/data/legal/india/` (ingest scans **both** by default; see `backend/data/legal/india/README.md`), then run `python -m scripts.ingest_legal_docs` from `backend/`. The company UI exposes **Legal** in the sidebar; chat calls `POST /api/v1/companies/{company_id}/legal/chat`.
@@ -65,6 +67,23 @@ npm run dev
 ```
 
 Open `http://localhost:5173`. The Vite dev server proxies `/api` and `/health` to the backend (default `http://127.0.0.1:8080`).
+
+If you need custom path prefixes:
+
+```env
+# Frontend app route base (served as /hworkr/...)
+VITE_FRONTEND_BASE_PATH=/hworkr
+
+# Backend route prefix (API/ws/health/uploads served as /hworkr-backend/...)
+VITE_BACKEND_BASE_PATH=/hworkr-backend
+
+# Backend origin for dev proxy. If this URL contains a path, it is preserved.
+VITE_API_ORIGIN=http://127.0.0.1:8080
+
+# Optional explicit API base used by fetch() calls.
+# Defaults to <VITE_BACKEND_BASE_PATH>/api/v1 when omitted.
+VITE_API_BASE=/hworkr-backend/api/v1
+```
 
 ### If you see `WinError 10013` (socket access denied)
 

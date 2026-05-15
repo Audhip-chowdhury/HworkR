@@ -45,6 +45,13 @@ hub = WebSocketHub()
 set_hub(hub)
 
 
+def with_api_base(path: str) -> str:
+    normalized = path if path.startswith("/") else f"/{path}"
+    if not settings.api_base_path:
+        return normalized
+    return f"{settings.api_base_path}{normalized}"
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await anyio.to_thread.run_sync(init_db)
@@ -59,16 +66,22 @@ async def lifespan(_: FastAPI):
             pass
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app = FastAPI(
+    title=settings.app_name,
+    lifespan=lifespan,
+    docs_url=with_api_base("/docs"),
+    redoc_url=with_api_base("/redoc"),
+    openapi_url=with_api_base("/openapi.json"),
+)
 
 _upload_root = Path(settings.upload_dir).resolve()
 _upload_root.mkdir(parents=True, exist_ok=True)
 (_upload_root / "logos").mkdir(exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(_upload_root)), name="uploads")
+app.mount(with_api_base("/uploads"), StaticFiles(directory=str(_upload_root)), name="uploads")
 
 _branding_assets = Path(__file__).resolve().parent / "assets" / "branding"
 if _branding_assets.is_dir():
-    app.mount("/branding-assets", StaticFiles(directory=str(_branding_assets)), name="branding_assets")
+    app.mount(with_api_base("/branding-assets"), StaticFiles(directory=str(_branding_assets)), name="branding_assets")
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,7 +91,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-v1 = APIRouter(prefix="/api/v1")
+v1 = APIRouter(prefix=with_api_base("/api/v1"))
 v1.include_router(auth.router)
 v1.include_router(me.router)
 v1.include_router(company_registration.router)
@@ -107,7 +120,7 @@ v1.include_router(sso.router)
 app.include_router(v1)
 
 
-@app.websocket("/ws/companies/{company_id}")
+@app.websocket(with_api_base("/ws/companies/{company_id}"))
 async def company_events_ws(
     websocket: WebSocket,
     company_id: str,
@@ -143,6 +156,6 @@ async def company_events_ws(
         hub.disconnect(company_id, websocket)
 
 
-@app.get("/health")
+@app.get(with_api_base("/health"))
 def health():
     return {"status": "ok", "app": settings.app_name}

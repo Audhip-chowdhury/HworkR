@@ -1,4 +1,12 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
+function normalizePrefixPath(raw: string | undefined): string {
+  const trimmed = (raw ?? '').trim()
+  if (!trimmed || trimmed === '/') return ''
+  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  return withLeadingSlash.endsWith('/') ? withLeadingSlash.slice(0, -1) : withLeadingSlash
+}
+
+const BACKEND_BASE_PATH = normalizePrefixPath(import.meta.env.VITE_BACKEND_BASE_PATH)
+const API_BASE = import.meta.env.VITE_API_BASE ?? `${BACKEND_BASE_PATH}/api/v1`
 
 const TOKEN_KEY = 'hworkr_token'
 

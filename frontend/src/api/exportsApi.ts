@@ -1,7 +1,5 @@
-import { getToken } from './client'
+import { API_BASE, getToken } from './client'
 import { companyPath } from './paths'
-
-const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
 export async function downloadExport(
   companyId: string,
