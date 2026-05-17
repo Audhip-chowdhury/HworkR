@@ -31,6 +31,7 @@ def register(
         is_platform_admin=False,
     )
     db.add(user)
+    db.flush()  # ensure users row exists before audit_trail FK on user_id
     write_audit(
         db,
         company_id=None,
