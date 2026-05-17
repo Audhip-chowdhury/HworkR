@@ -40,7 +40,7 @@ Override secrets with a `backend/.env` file:
 ```env
 SECRET_KEY=your-long-random-string
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/hworkr
-CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://hworkr.audhip-projects.com,http://hworkr.audhip-projects.com
 # Optional: serve backend under a path prefix, e.g. /hworkr
 API_BASE_PATH=
 ```

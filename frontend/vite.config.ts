@@ -17,6 +17,20 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       port: 5173,
+      allowedHosts: [
+        'localhost',
+        '127.0.0.1',
+        'hworkr.audhip-projects.com',
+        '.audhip-projects.com',
+      ],
+    },
+    preview: {
+      allowedHosts: [
+        'localhost',
+        '127.0.0.1',
+        'hworkr.audhip-projects.com',
+        '.audhip-projects.com',
+      ],
     },
   }
 })

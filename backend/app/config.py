@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     api_base_path: str = Field(default="", validation_alias=AliasChoices("API_BASE_PATH", "BACKEND_BASE_PATH"))
     cors_origins: str = (
         "http://localhost:5173,http://127.0.0.1:5173,"
-        "http://localhost:8020,http://127.0.0.1:8020"
+        "http://localhost:8020,http://127.0.0.1:8020,"
+        "https://hworkr.audhip-projects.com,http://hworkr.audhip-projects.com"
     )
     upload_dir: Path = Path("./uploads")
     max_upload_bytes: int = 2 * 1024 * 1024  # 2 MiB — company logos
